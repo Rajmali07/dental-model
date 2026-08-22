@@ -1,0 +1,32 @@
+# Central registry of dataset locations and sources.
+# Keep this in sync with README.md's "Data sources" section.
+# Actual data files are NOT committed to git (see .gitignore) - only this manifest is.
+
+sources:
+  gingivitis_captioning:
+    name: "A Dental Intraoral Image Dataset of Gingivitis for Image Captioning"
+    url: "https://data.mendeley.com/datasets/9jnf2jvghy/2"
+    raw_path: "data/raw/gingivitis_captioning/"
+    status: "deferred_v2"          # not used in v1 pipeline
+
+  plaque_diagno:
+    name: "A new multi-modal dataset for Dental Plaque Diagnosis"
+    url: "https://data.mendeley.com/datasets/g8yhdvgjy2/3"
+    raw_path: "data/raw/plaque_diagno/"
+    status: "optional"             # include only if EDA shows added value over Roboflow's plaque class
+
+  caries_spectra:
+    name: "Caries-Spectra: A dataset of Enamel Caries"
+    url: "https://data.mendeley.com/datasets/3253gj88rr/1"
+    raw_path: "data/raw/caries_spectra/"
+    status: "required"             # feeds the classifier
+
+  roboflow_detection:
+    name: "Dental Dataset: More Healthy and Caries Plaque"
+    url: "https://universe.roboflow.com/dental-data2/dental-dataset-more-healthy-and-caries-plaque"
+    raw_path: "data/raw/roboflow_detection/"
+    status: "required"             # feeds the detector
+
+interim_dir: "data/interim"
+processed_dir: "data/processed"
+checksums_file: "data/processed/checksums.json"

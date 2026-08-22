@@ -1,0 +1,37 @@
+# Environments
+.venv/
+.python-version
+
+# Secrets
+.env
+
+# Data (tracked separately via dvc/checksums, not git)
+data/raw/
+data/interim/
+data/processed/
+*.rar
+*.7z
+*.zip
+
+# Model weights (stored on HF Hub, not git)
+models/**/*.pt
+models/**/*.pth
+models/**/*.ckpt
+models/**/*.onnx
+!models/.gitkeep
+
+# Notebooks checkpoints
+.ipynb_checkpoints/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Experiment tracking
+mlruns/
+wandb/
+
+# OS
+.DS_Store

@@ -1,0 +1,39 @@
+# timm backbone classifier config
+# Consumed by src/dental_model/classifier/train.py
+
+data:
+  processed_csv: "data/processed/classifier/labels.csv"   # columns: image_path,label
+  classes: ["healthy", "plaque", "caries_early", "caries_advanced"]
+  image_size: 224
+  val_split: 0.15
+  test_split: 0.15
+  stratify: true
+
+model:
+  backbone: "efficientnet_b0"     # try convnext_tiny as an alternative
+  pretrained: true
+  dropout: 0.2
+
+train:
+  epochs: 30
+  batch_size: 32
+  lr: 3e-4
+  weight_decay: 1e-4
+  class_weighting: true           # handle imbalance on caries_advanced
+  seed: 42
+  device: "cuda"
+  early_stopping_patience: 7
+  num_workers: 8
+
+augmentation:
+  horizontal_flip: true
+  rotation_degrees: 15
+  color_jitter: 0.1
+  random_crop: true
+
+output:
+  project_dir: "models/classifier_runs"
+  run_name: "v0"
+
+logging:
+  tracker: "none"                 # "mlflow" | "wandb" | "none"

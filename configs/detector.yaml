@@ -1,0 +1,28 @@
+# YOLOv8 (Ultralytics) detector config
+# Consumed by src/dental_model/detector/train.py
+
+data:
+  yaml_path: "data/processed/detector/data.yaml"   # Ultralytics-format dataset yaml (train/val/test + class names)
+  image_size: 640
+  classes: ["healthy", "plaque", "caries"]          # must match the unified label schema
+
+model:
+  architecture: "yolov8n.pt"    # swap to yolov8s.pt / yolov8m.pt if compute allows
+  pretrained: true
+
+train:
+  epochs: 100
+  batch_size: 16
+  patience: 20                  # early stopping
+  device: "cuda"                # falls back to cpu automatically if unavailable
+  seed: 42
+  optimizer: "auto"
+  lr0: 0.01
+  workers: 8
+
+output:
+  project_dir: "models/detector_runs"
+  run_name: "v0"
+
+logging:
+  tracker: "none"                # "mlflow" | "wandb" | "none"

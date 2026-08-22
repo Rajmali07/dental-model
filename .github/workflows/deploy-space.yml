@@ -1,0 +1,40 @@
+name: Deploy to Hugging Face Space
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push app/ to HF Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE_REPO: ${{ secrets.HF_SPACE_REPO }}   # e.g. your-username/dental-model-demo
+        run: |
+          pip install -q huggingface_hub
+          python - <<'PY'
+          import os
+          from huggingface_hub import HfApi
+
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          api.upload_folder(
+              folder_path="app",
+              repo_id=os.environ["HF_SPACE_REPO"],
+              repo_type="space",
+              commit_message="Deploy from CI: sync app/ to Space",
+          )
+          PY
+
+# Setup required (one-time, in the GitHub repo's Settings -> Secrets and variables -> Actions):
+#   HF_TOKEN        - a Hugging Face access token with "write" permission
+#   HF_SPACE_REPO   - target Space, e.g. "your-username/dental-model-demo"
+# The Space itself must already exist (created once manually, see SETUP.md) before this workflow can push to it.
