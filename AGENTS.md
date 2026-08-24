@@ -67,6 +67,18 @@ or `src/dental_model/pipeline.py` — these are the two places most likely to br
   affects a trained model's behavior (new data, new hyperparameters, new architecture) —
   not for pure refactors.
 
+## Documentation & Report Synchronization
+- **Mandatory `report.md` updates:** Whenever a significant milestone or change occurs in the
+  codebase, you **MUST** update `report.md` (and `report/synopsis.md`) to reflect the latest state:
+  - **New model training runs or benchmark results:** Update benchmark comparison tables with real
+    metrics from `models/*_runs/results.csv`.
+  - **New pipeline phases or architectural modules:** (e.g., implementing `classifier/`,
+    `pipeline.py`, Grad-CAM `viz.py`, or `app/app.py`), update the repository structure tree and
+    progress tracker.
+  - **Dataset/label schema modifications:** Update class mapping tables, file count summaries,
+    and split breakdowns.
+  - **Test additions:** Keep test suite counts and coverage records current.
+
 ## What not to do
 - Don't add `venv`, `requirements.txt` (root-level), or `pip freeze` output — this repo is
   `uv`-only. (`app/requirements.txt` is the one intentional exception: it's exported via

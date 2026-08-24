@@ -6,6 +6,7 @@
 .env
 
 # Data (tracked separately via dvc/checksums, not git)
+/data/
 data/raw/
 data/interim/
 data/processed/
@@ -14,11 +15,19 @@ data/processed/
 *.zip
 
 # Model weights (stored on HF Hub, not git)
+*.pt
+*.pth
+*.ckpt
+*.onnx
 models/**/*.pt
 models/**/*.pth
 models/**/*.ckpt
 models/**/*.onnx
 !models/.gitkeep
+
+# Temporary / Scaffold / Third-party
+dental-model-scaffold/
+runs/
 
 # Notebooks checkpoints
 .ipynb_checkpoints/
@@ -38,9 +47,3 @@ wandb/
 
 # Windows
 desktop.ini
-
-# Ignore all data folder contents directly
-data/*
-!data/.gitkeep
-
-data/
