@@ -6,12 +6,12 @@ data:
   - plaque
   - caries
 model:
-  architecture: yolov8n.pt
+  architecture: yolov8s.pt
   pretrained: true
 train:
-  epochs: 50
+  epochs: 100
   batch_size: 16
-  patience: 15
+  patience: 30
   device: cuda
   seed: 42
   optimizer: auto
@@ -19,6 +19,6 @@ train:
   workers: 4
 output:
   project_dir: models/detector_runs
-  run_name: v0
+  run_name: v1
 logging:
   tracker: none
