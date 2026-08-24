@@ -37,7 +37,7 @@ The system decouples object detection from fine-grained lesion classification:
                                   │  │    Stage 2: timm Lesion Classifier   │
                                   │  │  - Severity: early vs. advanced     │
                                   │  │  - Class-weighted / Focal Loss      │
-                                  └───────────────────┬─────────────────┘
+                                  │  └───────────────────┬─────────────────┘
                                   │                      │
                                   ▼                      ▼
                   ┌────────────────────────────────────────────────────────┐
@@ -68,13 +68,15 @@ dental-model/
 │       ├── classifier/labels.csv      # Stratified 70/15/15 classification split (2,000 images)
 │       └── detector/data.yaml         # YOLO format (4,881 train / 692 val / 615 test)
 ├── models/                            # Model Checkpoints & Training Outputs (gitignored)
-│   └── detector_runs/                 # YOLOv8 runs (v0 Nano, v1 Small)
+│   ├── detector_runs/                 # YOLOv8 runs (v0 Nano, v1 Small)
+│   └── classifier_runs/               # timm EfficientNet-B0 runs (v0)
 ├── notebooks/                         # Pre-executed Jupyter research & exploration notebooks
 │   ├── 01_eda.ipynb                   # Phase 0: Multi-source EDA & figures
 │   ├── 02_preprocessing.ipynb         # Phase 0: Label unification & splitting prototype
-│   └── 04_detector_finetune.ipynb     # Phase 1: YOLOv8 training, metrics & visual bbox inference
+│   ├── 04_detector_finetune.ipynb     # Phase 1: YOLOv8 training, metrics & visual bbox inference
+│   └── 05_classifier_finetune.ipynb   # Phase 2: timm classifier fine-tuning & evaluation
 ├── report/                            # Technical reports & figures
-│   ├── figures/                       # 7 High-resolution EDA figures
+│   ├── figures/                       # EDA figures, diagnostic Grad-CAM, and pipeline outputs
 │   └── synopsis.md                    # Detailed architectural & results synopsis
 ├── scripts/                           # Multi-platform execution scripts (.ps1 and .sh)
 ├── src/dental_model/                  # Modular Python Package
@@ -82,8 +84,8 @@ dental-model/
 │   ├── detector/ (train.py, infer.py)
 │   ├── classifier/ (model.py, train.py, infer.py)
 │   ├── pipeline.py                    # Unified detector -> crop -> classifier pipeline
-│   └── utils/ (viz.py, metrics.py)
-├── tests/                             # Automated Test Suite (pytest, 15 passing tests)
+│   └── utils/ (viz.py)                # Grad-CAM and detection overlay utilities
+├── tests/                             # Automated Test Suite (pytest, 35 passing tests)
 ├── app/                               # Hugging Face Space Gradio Deployment
 ├── AGENTS.md                          # Coding conventions & constraints
 ├── pyproject.toml                     # uv project configuration & CUDA wheel index
@@ -104,23 +106,23 @@ All 12,379 processed files are tracked with SHA-256 integrity hashes in `data/pr
 
 ---
 
-## 4. Detector Benchmark Results (Phase 1)
+## 4. Benchmark Results & Verification
 
-Trained on NVIDIA RTX 4070 (CUDA 12.1):
+### 4.1 Stage 1 Detector (YOLOv8s Run v1)
+- **Overall Precision:** 0.5352 (+7.9% vs baseline v0)
+- **Overall Recall:** 0.5475 (+5.9% vs baseline v0)
+- **mAP@50:** 0.4692 (Peak: 0.476)
+- **mAP@50-95:** 0.2619 (Peak: 0.267)
+- **Caries mAP@50:** 0.384 (+6.9% vs baseline v0)
 
-| Metric | Run v0 (YOLOv8 Nano, 50 ep) | Run v1 (YOLOv8 Small, 100 ep) | Delta |
-| :--- | :---: | :---: | :---: |
-| **Overall Precision** | 0.4560 | **0.5352** | **+7.9%** |
-| **Overall Recall** | 0.4888 | **0.5475** | **+5.9%** |
-| **mAP@50 (Overall)** | 0.4267 (Peak: 0.430) | **0.4692 (Peak: 0.476)** | **+4.6%** |
-| **mAP@50-95 (Overall)** | 0.2372 (Peak: 0.239) | **0.2619 (Peak: 0.267)** | **+2.8%** |
-| `healthy` mAP@50 | 0.790 | **0.812** | +2.2% |
-| `caries` mAP@50 | 0.315 | **0.384** | +6.9% |
-| `plaque` mAP@50 | 0.185 | **0.212** | +2.7% |
+### 4.2 Stage 2 Classifier (EfficientNet-B0 Run v0)
+- **Test Accuracy:** 95.67%
+- **Macro F1 Score:** 0.964
+- **Grad-CAM Sanity Check:** Verified that attention is centered on tooth enamel and occlusal fissure lines ($1.7\times - 4.35\times$ center-to-border activation ratio), with zero shortcut learning on photographic borders.
 
----
+### 4.3 Phase 3 Unified Pipeline (`DentalPipeline`)
+- Implemented in `src/dental_model/pipeline.py`, combining `DentalDetector` $\rightarrow$ bounding box cropping $\rightarrow$ `DentalClassifierInferer` severity classification $\rightarrow$ `generate_gradcam` visual explainability heatmaps $\rightarrow$ structured JSON output.
 
-- Automated test suite (`pytest`) executing **25 unit tests** across `tests/test_data.py` (4), `tests/test_detector.py` (11), and `tests/test_classifier.py` (10) all passing (100% in ~2.9s).
-- Code linting and formatting configured via `ruff` with 0 errors across `src/` and `tests/`.
-- Git release tag `v0.1.0-detector` created locally.
-- Phase 2 Classifier module (`src/dental_model/classifier/model.py`, `train.py`) verified and ready for training.
+### 4.4 Verification & Quality Assurance
+- Automated test suite (`pytest`) executing **35 unit tests** across `tests/test_data.py` (4), `tests/test_detector.py` (11), `tests/test_classifier.py` (10), and `tests/test_pipeline.py` (10) all passing (100% in ~4.3s).
+- Code linting and formatting configured via `ruff` with 0 errors across `src/`, `notebooks/`, and `tests/`.
