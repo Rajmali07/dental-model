@@ -1,51 +1,66 @@
 ---
-license: TBD
+license: cc-by-4.0
 tags:
   - image-classification
   - object-detection
   - dental
   - medical-imaging
+  - gradio
 datasets:
-  - custom (see Training Data below)
+  - Mendeley-3253gj88rr
+  - Roboflow-dental-dataset
 model-index:
-  - name: dental-model-detector
+  - name: dental-model-detector-yolov8s
     results:
       - task:
           type: object-detection
         metrics:
+          - type: mAP50
+            value: 0.4692
           - type: mAP50-95
-            value: TBD
-  - name: dental-model-classifier
+            value: 0.2619
+          - type: precision
+            value: 0.5352
+          - type: recall
+            value: 0.5475
+  - name: dental-model-classifier-efficientnet-b0
     results:
       - task:
           type: image-classification
         metrics:
-          - type: f1
-            value: TBD
+          - type: accuracy
+            value: 0.9567
+          - type: macro-f1
+            value: 0.9640
 ---
 
-# Dental Model — Detector + Classifier
+# 🦷 Dental Disease Detection & Severity Staging System
 
-## Intended use
-Research/portfolio demonstration of a two-stage pipeline (detector → crop → classifier) for
-identifying healthy / plaque / caries regions in intraoral photographs.
+## Intended Use
+Research and portfolio demonstration of a two-stage modular computer vision pipeline (`detector` $\rightarrow$ `crop` $\rightarrow$ `classifier` $\rightarrow$ `Grad-CAM explainability`) for identifying and staging healthy teeth, dental plaque, and enamel caries lesions from intraoral clinical photographs.
 
-## Out-of-scope use
-- **Not a diagnostic device.** Not validated for clinical use, not a substitute for examination
-  by a licensed dentist.
-- Not tested on intraoral camera hardware beyond what appears in the training data.
+## Clinical & Regulatory Disclaimers
+- **Not a Diagnostic Device:** This model has not been evaluated, cleared, or approved by the FDA, CE, or any international medical regulatory agency.
+- **Not a Substitute for Professional Examination:** It should never be used as a primary diagnostic tool or as a replacement for clinical evaluation, radiography, and consultation with a licensed dentist.
 
-## Training data
-- [Mendeley 9jnf2jvghy v2](https://data.mendeley.com/datasets/9jnf2jvghy/2) — deferred, not used in v1
-- [Mendeley g8yhdvgjy2 v3](https://data.mendeley.com/datasets/g8yhdvgjy2/3) — optional, TBD after EDA
-- [Mendeley 3253gj88rr v1](https://data.mendeley.com/datasets/3253gj88rr/1) — used (classifier)
-- [Roboflow dental-dataset-more-healthy-and-caries-plaque](https://universe.roboflow.com/dental-data2/dental-dataset-more-healthy-and-caries-plaque) — used (detector)
+## Training Data Provenance
+1. **Stage 1 Detector (YOLOv8s):** Trained on Roboflow Dental Universe dataset (6,188 annotated images; 4,881 train / 692 val / 615 test) remapped to hard-tissue classes (`healthy: 0`, `plaque: 1`, `caries: 2`).
+2. **Stage 2 Classifier (EfficientNet-B0):** Trained on Caries-Spectra dataset ([Mendeley 3253gj88rr v1](https://data.mendeley.com/datasets/3253gj88rr/1)) across 2,000 images (stratified 70/15/15 train/val/test) for lesion severity staging:
+   - `healthy` (sound enamel)
+   - `caries_early` (initial enamel demineralization)
+   - `caries_advanced` (cavitated enamel decay)
 
-Confirm each source's license before redistributing derived weights.
+## Model Benchmarks & Performance
+- **Detector (YOLOv8s, 100 Epochs):**
+  - Overall mAP@50: **0.4692** (Peak: 0.476)
+  - Overall mAP@50-95: **0.2619** (Peak: 0.267)
+  - Caries Localization mAP@50: **0.384**
+  - Healthy Tooth mAP@50: **0.812**
+- **Classifier (EfficientNet-B0, Class-Weighted AdamW):**
+  - Test Accuracy: **95.67%** (held-out 300 test images)
+  - Macro F1 Score: **0.9640**
+- **Explainability:** Grad-CAM attention heatmaps concentrate on tooth crown structures and occlusal fissures ($1.7\times - 4.35\times$ center-to-border saliency ratio).
 
-## Known limitations
-- Class imbalance: few "advanced caries" examples in the source data.
-- Sensitivity to image quality/lighting; source images vary across datasets.
-
-## Evaluation
-Fill in after training: mAP50-95 (detector), per-class F1 + confusion matrix (classifier).
+## Known Limitations
+- Plaque localization exhibits modest mAP@50 (0.212) due to diffuse visual plaque boundaries and inconsistent clinical disclosing agent staining.
+- Performance on low-resolution mobile phone captures or off-axis angles may vary compared to direct clinical macro captures.
