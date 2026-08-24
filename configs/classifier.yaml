@@ -3,7 +3,7 @@
 
 data:
   processed_csv: "data/processed/classifier/labels.csv"   # columns: image_path,label
-  classes: ["healthy", "plaque", "caries_early", "caries_advanced"]
+  classes: ["healthy", "caries_early", "caries_advanced"]
   image_size: 224
   val_split: 0.15
   test_split: 0.15
