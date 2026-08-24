@@ -2,6 +2,20 @@
 # Keep this in sync with README.md's "Data sources" section.
 # Actual data files are NOT committed to git (see .gitignore) - only this manifest is.
 
+# -----------------------------------------------------------------------------
+# Roboflow Label Taxonomy Mapping Decision Note:
+# The raw Roboflow dataset defines 6 source classes: 0: caries, 1: cavity,
+# 2: gingivitis, 3: gum_swelling, 4: healthy, and 5: plaque.
+# During label unification (src/dental_model/data/unify_labels.py):
+# 1. Soft-tissue periodontal conditions ('gingivitis' [2] and 'gum_swelling' [3])
+#    are intentionally dropped as they are outside the scope of the hard-tissue
+#    caries & plaque detection/classification pipeline (status: deferred_v2).
+# 2. 'caries' [0] and 'cavity' [1] are consolidated into a single target class
+#    'caries' (target index 2) to eliminate synonymous clinical overlap.
+# 3. 'healthy' [4] maps to target class 0 and 'plaque' [5] maps to target class 1,
+#    yielding the unified 3-class schema: [0: healthy, 1: plaque, 2: caries].
+# -----------------------------------------------------------------------------
+
 sources:
   gingivitis_captioning:
     name: "A Dental Intraoral Image Dataset of Gingivitis for Image Captioning"
@@ -21,6 +35,7 @@ sources:
     raw_path: "data/raw/caries_spectra/"
     status: "required"             # feeds the classifier
 
+  # Remap decision: caries(0)+cavity(1) -> caries(2); healthy(4) -> healthy(0); plaque(5) -> plaque(1); gingivitis(2)+gum_swelling(3) dropped (deferred_v2)
   roboflow_detection:
     name: "Dental Dataset: More Healthy and Caries Plaque"
     url: "https://universe.roboflow.com/dental-data2/dental-dataset-more-healthy-and-caries-plaque"
