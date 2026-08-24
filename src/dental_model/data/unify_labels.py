@@ -1,4 +1,4 @@
-﻿"""Data label unification module for Dental Model datasets.
+"""Data label unification module for Dental Model datasets.
 
 Maps heterogeneous source labels into a single unified taxonomy and produces
 clean datasets for detector and classifier training.
@@ -9,12 +9,12 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
-from pathlib import Path
 import shutil
+from pathlib import Path
+
 import pandas as pd
-from sklearn.model_selection import train_test_split
 import yaml
+from sklearn.model_selection import train_test_split
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -95,7 +95,11 @@ def unify_caries_spectra(
         logger.warning("No classification images found in %s", caries_dir)
         return df
 
-    logger.info("Caries-Spectra loaded: %d images. Class counts:\n%s", len(df), df["label"].value_counts())
+    logger.info(
+        "Caries-Spectra loaded: %d images. Class counts:\n%s",
+        len(df),
+        df["label"].value_counts(),
+    )
 
     # Stratified Train/Val/Test Split
     train_val_df, test_df = train_test_split(
@@ -103,7 +107,10 @@ def unify_caries_spectra(
     )
     adjusted_val_size = val_split / (1.0 - test_split)
     train_df, val_df = train_test_split(
-        train_val_df, test_size=adjusted_val_size, random_state=seed, stratify=train_val_df["label"]
+        train_val_df,
+        test_size=adjusted_val_size,
+        random_state=seed,
+        stratify=train_val_df["label"],
     )
 
     train_df = train_df.copy()
@@ -123,7 +130,11 @@ def unify_caries_spectra(
 
     root_csv = processed_dir / "labels.csv"
     combined.to_csv(root_csv, index=False)
-    logger.info("Saved unified classification labels to %s (%d rows)", classifier_csv, len(combined))
+    logger.info(
+        "Saved unified classification labels to %s (%d rows)",
+        classifier_csv,
+        len(combined),
+    )
 
     return combined
 

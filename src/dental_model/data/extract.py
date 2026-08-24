@@ -1,4 +1,4 @@
-﻿"""Data extraction module for Dental Model datasets.
+"""Data extraction module for Dental Model datasets.
 
 Decompresses archives (.zip, .rar, .7z, .tar.gz) and organizes raw/interim folders.
 """
@@ -7,9 +7,10 @@ from __future__ import annotations
 
 import logging
 import os
-from pathlib import Path
 import shutil
 import zipfile
+from pathlib import Path
+
 import yaml
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -23,10 +24,22 @@ def load_data_config(config_path: str | Path = "configs/data_paths.yaml") -> dic
         logger.warning("Config %s not found. Using default paths.", config_file)
         return {
             "sources": {
-                "caries_spectra": {"raw_path": "data/raw/caries_spectra/", "status": "required"},
-                "roboflow_detection": {"raw_path": "data/raw/roboflow_detection/", "status": "required"},
-                "plaque_diagno": {"raw_path": "data/raw/plaque_diagno/", "status": "optional"},
-                "gingivitis_captioning": {"raw_path": "data/raw/gingivitis_captioning/", "status": "deferred_v2"},
+                "caries_spectra": {
+                    "raw_path": "data/raw/caries_spectra/",
+                    "status": "required",
+                },
+                "roboflow_detection": {
+                    "raw_path": "data/raw/roboflow_detection/",
+                    "status": "required",
+                },
+                "plaque_diagno": {
+                    "raw_path": "data/raw/plaque_diagno/",
+                    "status": "optional",
+                },
+                "gingivitis_captioning": {
+                    "raw_path": "data/raw/gingivitis_captioning/",
+                    "status": "deferred_v2",
+                },
             },
             "interim_dir": "data/interim",
             "processed_dir": "data/processed",
