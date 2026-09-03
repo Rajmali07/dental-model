@@ -22,17 +22,32 @@ jobs:
         run: |
           pip install -q huggingface_hub
           python - <<'PY'
-          import os
+          import os, sys
           from huggingface_hub import HfApi
 
-          api = HfApi(token=os.environ["HF_TOKEN"])
+          token = os.environ.get("HF_TOKEN", "").strip()
+          space_repo = os.environ.get("HF_SPACE_REPO", "").strip()
+
+          if not token or not space_repo:
+              print("::error::Missing HF_TOKEN or HF_SPACE_REPO secret in GitHub Actions!")
+              print("Please add HF_TOKEN and HF_SPACE_REPO under GitHub repo Settings -> Secrets and variables -> Actions.")
+              sys.exit(1)
+
+          api = HfApi(token=token)
+          try:
+              api.create_repo(repo_id=space_repo, repo_type="space", space_sdk="gradio", exist_ok=True)
+          except Exception as e:
+              print(f"Space check/create info: {e}")
+
           api.upload_folder(
               folder_path="app",
-              repo_id=os.environ["HF_SPACE_REPO"],
+              repo_id=space_repo,
               repo_type="space",
               commit_message="Deploy from CI: sync app/ to Space",
           )
+          print(f"Successfully deployed to https://huggingface.co/spaces/{space_repo}")
           PY
+
 
 # Setup required (one-time, in the GitHub repo's Settings -> Secrets and variables -> Actions):
 #   HF_TOKEN        - a Hugging Face access token with "write" permission
