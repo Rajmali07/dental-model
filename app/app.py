@@ -24,6 +24,19 @@ if str(CURRENT_DIR) not in sys.path:
 
 from dental_model.pipeline import DentalPipeline  # noqa: E402
 
+try:
+    import spaces
+except ImportError:
+    spaces = None
+
+
+def maybe_gpu(fn):
+    """Wrap function with @spaces.GPU for Hugging Face ZeroGPU compatibility."""
+    if spaces is not None and hasattr(spaces, "GPU"):
+        return spaces.GPU(fn)
+    return fn
+
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -163,6 +176,7 @@ PRESETS = {
 }
 
 
+@maybe_gpu
 def process_intraoral_image(
     image: np.ndarray | None,
     conf_threshold: float,
