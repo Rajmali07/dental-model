@@ -108,12 +108,9 @@ All 12,379 processed files are tracked with SHA-256 integrity hashes in `data/pr
 
 ## 4. Benchmark Results & Verification
 
-### 4.1 Stage 1 Detector (YOLOv8s Run v1)
-- **Overall Precision:** 0.5352 (+7.9% vs baseline v0)
-- **Overall Recall:** 0.5475 (+5.9% vs baseline v0)
-- **mAP@50:** 0.4692 (Peak: 0.476)
-- **mAP@50-95:** 0.2619 (Peak: 0.267)
-- **Caries mAP@50:** 0.384 (+6.9% vs baseline v0)
+### 4.1 Stage 1 Detector (YOLOv8s Runs v1 & v2)
+- **Run v1 (3-Class Hard Tissue):** Overall Precision: 0.5352, Recall: 0.5475, mAP@50: 0.4692, Caries mAP@50: 0.384.
+- **Run v2 (5-Class Multi-Disease):** Expanded to soft-tissue periodontal conditions (`gingivitis` mAP@50: **0.541**, `gum_swelling` mAP@50: 0.166, `healthy` mAP@50: 0.782, `caries` mAP@50: 0.324, `plaque` mAP@50: 0.191). Overall mAP@50: **0.4010**.
 
 ### 4.2 Stage 2 Classifier (EfficientNet-B0 Run v0)
 - **Test Accuracy:** 95.67%
@@ -124,5 +121,6 @@ All 12,379 processed files are tracked with SHA-256 integrity hashes in `data/pr
 - Implemented in `src/dental_model/pipeline.py`, combining `DentalDetector` $\rightarrow$ bounding box cropping $\rightarrow$ `DentalClassifierInferer` severity classification $\rightarrow$ `generate_gradcam` visual explainability heatmaps $\rightarrow$ structured JSON output.
 
 ### 4.4 Verification & Quality Assurance
-- Automated test suite (`pytest`) executing **35 unit tests** across `tests/test_data.py` (4), `tests/test_detector.py` (11), `tests/test_classifier.py` (10), and `tests/test_pipeline.py` (10) all passing (100% in ~4.3s).
-- Code linting and formatting configured via `ruff` with 0 errors across `src/`, `notebooks/`, and `tests/`.
+- Automated test suite (`pytest`) executing **36 unit tests** across `tests/test_app.py` (1), `tests/test_data.py` (4), `tests/test_detector.py` (11), `tests/test_classifier.py` (10), and `tests/test_pipeline.py` (10) all passing (100%).
+- Code linting and formatting configured via `ruff` with 0 errors across `src/`, `app/`, `notebooks/`, and `tests/`.
+- Gradio web app (`app/app.py`) equipped with doctor-centric clinical presets, top-level diagnostic triage card, reconciled clinical terminology, and clinical cyan/slate blue UI.

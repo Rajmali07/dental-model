@@ -237,36 +237,38 @@ The detection subsystem is fully implemented in `src/dental_model/detector/`:
 
 ### 5.2 Training Runs & Benchmark Comparison
 
-Two complete training iterations were conducted and logged under `models/detector_runs/`:
+Three complete training iterations were conducted and logged under `models/detector_runs/`:
 
 ```text
 Detector Benchmark Comparison on NVIDIA RTX 4070 (CUDA 12.1):
-┌───────────────────────┬─────────────────────────┬─────────────────────────┐
-│ Metric / Parameter    │ Run v0 (YOLOv8 Nano)    │ Run v1 (YOLOv8 Small)   │
-├───────────────────────┼─────────────────────────┼─────────────────────────┤
-│ Architecture          │ yolov8n.pt (3.2M params)│ yolov8s.pt (11.2M params│
-│ Input Resolution      │ 640 x 640               │ 640 x 640               │
-│ Epochs Trained        │ 50 epochs               │ 100 epochs              │
-│ Batch Size            │ 16                      │ 16                      │
-│ Training Duration     │ ~18.1 minutes           │ ~57.9 minutes           │
-├───────────────────────┼─────────────────────────┼─────────────────────────┤
-│ Overall Precision (B) │ 0.4560                  │ 0.5352 (+7.9%)          │
-│ Overall Recall (B)    │ 0.4888                  │ 0.5475 (+5.9%)          │
-│ **mAP@50 (B)**        │ **0.4267** (Peak 0.430) │ **0.4692** (Peak 0.476) │
-│ **mAP@50-95 (B)**     │ **0.2372** (Peak 0.239) │ **0.2619** (Peak 0.267) │
-├───────────────────────┼─────────────────────────┼─────────────────────────┤
-│ `healthy` mAP@50      │ 0.790                   │ 0.812 (+2.2%)           │
-│ `caries` mAP@50       │ 0.315                   │ 0.384 (+6.9%)           │
-│ `plaque` mAP@50       │ 0.185                   │ 0.212 (+2.7%)           │
-└───────────────────────┴─────────────────────────┴─────────────────────────┘
+┌───────────────────────┬─────────────────────────┬─────────────────────────┬─────────────────────────┐
+│ Metric / Parameter    │ Run v0 (YOLOv8 Nano)    │ Run v1 (YOLOv8 Small)   │ Run v2 (5-Class v2)     │
+├───────────────────────┼─────────────────────────┼─────────────────────────┼─────────────────────────┤
+│ Architecture          │ yolov8n.pt (3.2M params)│ yolov8s.pt (11.2M params│ yolov8s.pt (11.2M params│
+│ Classes Evaluated     │ 3 hard-tissue classes   │ 3 hard-tissue classes   │ 5 multi-disease classes │
+│ Input Resolution      │ 640 x 640               │ 640 x 640               │ 640 x 640               │
+│ Epochs Trained        │ 50 epochs               │ 100 epochs              │ 35 epochs               │
+│ Batch Size            │ 16                      │ 16                      │ 16                      │
+│ Training Duration     │ ~18.1 minutes           │ ~57.9 minutes           │ ~19.6 minutes           │
+├───────────────────────┼─────────────────────────┼─────────────────────────┼─────────────────────────┤
+│ Overall Precision (B) │ 0.4560                  │ 0.5352                  │ 0.4140                  │
+│ Overall Recall (B)    │ 0.4888                  │ 0.5475                  │ 0.5040                  │
+│ **mAP@50 (B)**        │ **0.4267**              │ **0.4692**              │ **0.4010**              │
+│ **mAP@50-95 (B)**     │ **0.2372**              │ **0.2619**              │ **0.1970**              │
+├───────────────────────┼─────────────────────────┼─────────────────────────┼─────────────────────────┤
+│ `healthy` mAP@50      │ 0.790                   │ 0.812                   │ 0.782                   │
+│ `caries` mAP@50       │ 0.315                   │ 0.384                   │ 0.324                   │
+│ `plaque` mAP@50       │ 0.185                   │ 0.212                   │ 0.191                   │
+│ `gingivitis` mAP@50   │ N/A (deferred v1)       │ N/A (deferred v1)       │ **0.541** (P:0.52, R:0.6)
+│ `gum_swelling` mAP@50 │ N/A (deferred v1)       │ N/A (deferred v1)       │ **0.166** (P:0.27, R:0.24)
+└───────────────────────┴─────────────────────────┴─────────────────────────┴─────────────────────────┘
 ```
 
 #### Key Detector Takeaways:
-1. **Model Capacity Scaling:** Upgrading from YOLOv8n (Run v0) to YOLOv8s (Run v1) yielded a **+4.6% boost in overall mAP50** and a **+6.9% boost in caries detection mAP50**.
-2. **Precision vs. Recall:** YOLOv8s demonstrated markedly fewer false positive detections on plaque and tooth fissures, improving overall precision from 0.456 to 0.535.
-3. **Plaque Detection Limitation:** Plaque detection remains modest (mAP50=0.212), which is explicitly acknowledged as a known clinical data limitation due to diffuse visual plaque boundaries and variable clinical staining.
+1. **Multi-Disease Expansion (v2):** Successfully expanded the detection scope from hard-tissue only to comprehensive oral pathology, achieving strong detection for soft-tissue **`gingivitis` (mAP50=0.541, Precision=0.521, Recall=0.595)**.
+2. **Model Capacity Scaling:** Upgrading from YOLOv8n (Run v0) to YOLOv8s (Run v1) yielded a **+4.6% boost in overall mAP50** and a **+6.9% boost in caries detection mAP50**.
+3. **Plaque & Swelling Limitations:** Plaque (mAP50=0.191) and gum swelling (mAP50=0.166) exhibit subtle visual boundaries and color variability across photographic devices, motivating future clinical contrast enhancement.
 
----
 
 ## 6. Phase 2: timm Lesion Classifier Implementation & Diagnostic Verification
 
@@ -456,18 +458,30 @@ tests\test_pipeline.py ..........                                        [100%]
 
 ---
 
-## 10. Next Technical Steps & Phase 4 Deployment Priorities
+## 10. Phase 4 Gradio Application: Doctor-Centric Clinical UX & Design
 
-1. **Build Interactive Gradio Web Demo (`app/app.py`):**
-   - Implement an intuitive, clinical-grade UI:
-     - Intraoral photograph upload with drag-and-drop.
-     - Confidence and IoU slider controls.
-     - Toggle for Grad-CAM explainability heatmaps on detected caries.
-     - Side-by-side view of full detections, cropped lesion gallery, and structured JSON diagnostics.
-2. **Export HF Spaces Dependencies (`app/requirements.txt`):**
-   - Export locked requirements using `uv export --format requirements-txt > app/requirements.txt` ensuring zero dependency mismatches on Hugging Face Spaces.
-3. **Automate CD Space Synchronization (`.github/workflows/deploy-space.yml`):**
-   - Verify automated GitHub Actions deployment pushing `app/` to the Hugging Face Space repository.
+The web application in `app/app.py` has been upgraded to a clinical decision-support interface tailored for dental practitioners:
+
+1. **Doctor Clinical Presets:**
+   - **Routine Screening (Recommended):** Auto-sets Confidence `0.35` and IoU `0.45` for balanced general practice checkups.
+   - **Early Prevention (High Sensitivity):** Auto-sets Confidence `0.20` and IoU `0.40` to catch incipient white-spot enamel demineralization for preventive therapy.
+   - **Definitive Diagnosis (High Specificity):** Auto-sets Confidence `0.50` and IoU `0.50` to isolate unambiguous cavitated lesions.
+   - **Custom Parameters:** Fine-grained manual control for research and benchmarking.
+
+2. **Top-Level Clinical Diagnostic Triage Card:**
+   - Generates an instant, patient-level clinical impression banner before individual lesion listings:
+     - Case Triage Status (🔴 *Urgent Restorative Care*, 🟡 *Preventive Protocol*, 🟣 *Prophylaxis*, 🟢 *Sound Dentition*).
+     - Quantitative site metrics (Total sites inspected, advanced cavities, early lesions, sound/ruled-out surfaces).
+     - Actionable clinical recommendations (e.g. bitewing x-rays, topical fluoride varnish, operative restoration).
+
+3. **Reconciled Diagnostic Terminology:**
+   - Reconciles Stage 1 (YOLOv8) and Stage 2 (`timm`) outputs into clear medical terminology:
+     - Eliminates doctor confusion when detector candidate proposals are ruled out as benign sound enamel by high-resolution micro-staging (`Sound Surface (Ruled Out)`).
+     - Maps raw class strings to clinical descriptions: *Advanced Dental Caries (Dentin Cavitation)*, *Incipient / Early Caries (Enamel Micro-Lesion)*, *Dental Plaque Biofilm*, *Sound Enamel*.
+
+4. **Medical Aesthetic & Design System:**
+   - Soft clinical cyan and slate blue palette (`gr.themes.Soft(primary_hue=cyan, secondary_hue=blue, neutral_hue=slate)`).
+   - Glassmorphic stat cards, high-contrast severity badges (🔴 Crimson, 🟡 Amber, 🟣 Violet, 🟢 Emerald), and responsive medical table layouts.
 
 ---
 

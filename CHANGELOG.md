@@ -5,8 +5,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 `pyproject.toml` and tagged model releases (e.g. `v0.1.0-detector`, `v0.1.0-classifier`).
 
 ## [Unreleased]
+
+## [0.2.0] - 2026-09-03
 ### Added
-- Initial repo scaffold: `pyproject.toml`, `uv.lock`, CI/CD workflows, configs, `.env.example`.
+- Version 2 (v2) 5-Class Multi-Disease Detector (`models/detector_runs/v2/weights/best.pt`).
+- Expanded detection taxonomy to incorporate soft-tissue periodontal conditions: `gingivitis` (mAP50=0.541) and `gum_swelling` (mAP50=0.166), achieving overall mAP50=0.401 across all 5 classes.
+- Unified 5-class dataset generation in `src/dental_model/data/unify_labels.py` (`unify_roboflow_detection_v2`).
+- Integrated periodontal diagnostic triage, severity staging, and doctor presets in `app/app.py`.
 
 ## [0.1.0] - 2026-08-24
 ### Added
