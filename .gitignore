@@ -38,6 +38,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .gradio/
+app/dental_model/
 
 # Experiment tracking
 mlruns/

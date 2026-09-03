@@ -15,10 +15,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Bundle package for HF Space
+        run: |
+          cp -r src/dental_model app/
+
       - name: Push app/ to HF Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          HF_SPACE_REPO: ${{ secrets.HF_SPACE_REPO }}   # e.g. your-username/dental-model-demo
+          HF_SPACE_REPO: ${{ secrets.HF_SPACE_REPO || 'Bihari04/dental-model-demo' }}
         run: |
           pip install -q huggingface_hub
           python - <<'PY'

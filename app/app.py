@@ -14,10 +14,13 @@ from pathlib import Path
 import gradio as gr
 import numpy as np
 
-# Ensure project src is in sys.path
-REPO_ROOT = Path(__file__).resolve().parents[1]
+# Ensure project src or bundled app package is in sys.path
+CURRENT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = CURRENT_DIR.parent
 if str(REPO_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(REPO_ROOT / "src"))
+if str(CURRENT_DIR) not in sys.path:
+    sys.path.insert(0, str(CURRENT_DIR))
 
 from dental_model.pipeline import DentalPipeline  # noqa: E402
 
@@ -41,8 +44,22 @@ def get_pipeline() -> DentalPipeline:
             det_weights = REPO_ROOT / "models/detector_runs/v1/weights/best.pt"
         if not det_weights.exists():
             det_weights = REPO_ROOT / "models/detector_runs/v0/weights/best.pt"
+        if not det_weights.exists():
+            from huggingface_hub import hf_hub_download
+
+            logger.info("Downloading detector v2 weights from HF Hub (Bihari04/dental-model)...")
+            det_weights = Path(
+                hf_hub_download(repo_id="Bihari04/dental-model", filename="detector_v2_best.pt")
+            )
 
         cls_weights = REPO_ROOT / "models/classifier_runs/v0/best.pt"
+        if not cls_weights.exists():
+            from huggingface_hub import hf_hub_download
+
+            logger.info("Downloading classifier weights from HF Hub (Bihari04/dental-model)...")
+            cls_weights = Path(
+                hf_hub_download(repo_id="Bihari04/dental-model", filename="classifier_best.pt")
+            )
 
         logger.info("Initializing DentalPipeline with weights:")
         logger.info("  • Detector  : %s", det_weights)
