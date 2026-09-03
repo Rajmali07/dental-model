@@ -1,0 +1,26 @@
+data:
+  yaml_path: data/processed/detector_v2/data.yaml
+  image_size: 640
+  classes:
+  - healthy
+  - plaque
+  - caries
+  - gingivitis
+  - gum_swelling
+model:
+  architecture: yolov8s.pt
+  pretrained: true
+train:
+  epochs: 35
+  batch_size: 16
+  patience: 12
+  device: cuda
+  seed: 42
+  optimizer: auto
+  lr0: 0.01
+  workers: 4
+output:
+  project_dir: models/detector_runs
+  run_name: v2
+logging:
+  tracker: none

@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import shutil
 from pathlib import Path
 
@@ -26,7 +27,7 @@ CARIES_SPECTRA_MAP = {
     "NoEnamel_Caries": "healthy",
 }
 
-# Standard taxonomy mapping for Roboflow Detection classes
+# Standard taxonomy mapping for Roboflow Detection classes (v1 - 3 classes)
 # Roboflow: 0: caries, 1: cavity, 2: gingivitis, 3: gum_swelling, 4: healthy, 5: plaque
 # Target 3-class schema: 0: healthy, 1: plaque, 2: caries
 ROBOFLOW_CLASS_MAP = {
@@ -34,6 +35,17 @@ ROBOFLOW_CLASS_MAP = {
     1: (2, "caries"),       # cavity -> caries
     4: (0, "healthy"),      # healthy -> healthy
     5: (1, "plaque"),       # plaque -> plaque
+}
+
+# Version 2 taxonomy mapping: includes soft-tissue periodontal conditions (5 classes)
+# Target 5-class schema: 0: healthy, 1: plaque, 2: caries, 3: gingivitis, 4: gum_swelling
+ROBOFLOW_CLASS_MAP_V2 = {
+    0: (2, "caries"),
+    1: (2, "caries"),
+    2: (3, "gingivitis"),
+    3: (4, "gum_swelling"),
+    4: (0, "healthy"),
+    5: (1, "plaque"),
 }
 
 VALID_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
@@ -216,6 +228,60 @@ def unify_roboflow_detection(interim_dir: Path, processed_dir: Path) -> Path:
         yaml.dump(detector_data, f, sort_keys=False)
 
     logger.info("Saved unified detector dataset config to %s", data_yaml_path)
+    return data_yaml_path
+
+
+def unify_roboflow_detection_v2(interim_dir: Path, processed_dir: Path) -> Path:
+    """Remap Roboflow detection dataset to unified 5-class YOLO structure for v2."""
+    roboflow_dir = interim_dir / "roboflow_detection"
+    detector_v2_dir = processed_dir / "detector_v2"
+    detector_v2_dir.mkdir(parents=True, exist_ok=True)
+
+    splits = ["train", "valid", "test"]
+    split_map = {"train": "train", "valid": "val", "test": "test"}
+
+    for split in splits:
+        src_img_dir = roboflow_dir / split / "images"
+        src_lbl_dir = roboflow_dir / split / "labels"
+        dst_split = split_map[split]
+        dst_img_dir = detector_v2_dir / dst_split / "images"
+        dst_lbl_dir = detector_v2_dir / dst_split / "labels"
+
+        dst_img_dir.mkdir(parents=True, exist_ok=True)
+        dst_lbl_dir.mkdir(parents=True, exist_ok=True)
+
+        if not src_img_dir.exists():
+            logger.warning("Roboflow split %s not found at %s", split, src_img_dir)
+            continue
+
+        for img_path in src_img_dir.iterdir():
+            if img_path.is_file() and img_path.suffix.lower() in VALID_IMAGE_EXTENSIONS:
+                dst_img = dst_img_dir / img_path.name
+                if not dst_img.exists():
+                    try:
+                        os.link(img_path, dst_img)
+                    except OSError:
+                        shutil.copy2(img_path, dst_img)
+
+                lbl_name = img_path.stem + ".txt"
+                src_lbl = src_lbl_dir / lbl_name
+                dst_lbl = dst_lbl_dir / lbl_name
+                remap_yolo_label_file(src_lbl, dst_lbl, ROBOFLOW_CLASS_MAP_V2)
+
+    data_yaml_path = detector_v2_dir / "data.yaml"
+    detector_data = {
+        "path": detector_v2_dir.resolve().as_posix(),
+        "train": "train/images",
+        "val": "val/images",
+        "test": "test/images",
+        "nc": 5,
+        "names": ["healthy", "plaque", "caries", "gingivitis", "gum_swelling"],
+    }
+
+    with open(data_yaml_path, "w", encoding="utf-8") as f:
+        yaml.dump(detector_data, f, sort_keys=False)
+
+    logger.info("Saved unified v2 detector dataset config to %s", data_yaml_path)
     return data_yaml_path
 
 
