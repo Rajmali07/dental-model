@@ -54,7 +54,7 @@ class DentalPipeline:
         self,
         detector: DentalDetector | None = None,
         classifier: DentalClassifierInferer | None = None,
-        detector_weights: str | Path = "models/detector_runs/v1/weights/best.pt",
+        detector_weights: str | Path = "models/detector_runs/v2/weights/best.pt",
         classifier_weights: str | Path = "models/classifier_runs/v0/best.pt",
         detector_conf: float = 0.25,
         detector_iou: float = 0.45,
@@ -69,12 +69,16 @@ class DentalPipeline:
             if not det_path.is_absolute():
                 det_path = REPO_ROOT / det_path
 
-            # Fallback to v0 detector if v1 not found
+            # Fallback to v2, v1, or v0 detector if specified weights not found
             if not det_path.exists():
-                v0_path = REPO_ROOT / "models/detector_runs/v0/weights/best.pt"
-                if v0_path.exists():
-                    logger.warning("Detector %s not found. Falling back to %s", det_path, v0_path)
-                    det_path = v0_path
+                for candidate in ["v2", "v1", "v0"]:
+                    cand_path = REPO_ROOT / f"models/detector_runs/{candidate}/weights/best.pt"
+                    if cand_path.exists():
+                        logger.warning(
+                            "Detector %s not found. Falling back to %s", det_path, cand_path
+                        )
+                        det_path = cand_path
+                        break
 
             self.detector = DentalDetector(
                 weights_path=det_path,
