@@ -1,4 +1,4 @@
-﻿# 🦷 Dental Disease Detection & Severity Classification
+# 🦷 Dental Disease Detection & Severity Classification
 
 An end-to-end computer vision system for automated detection and severity classification of dental conditions (**healthy teeth**, **dental plaque**, and **caries lesions**) from intraoral dental imagery.
 
