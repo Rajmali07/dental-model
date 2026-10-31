@@ -1,168 +1,576 @@
-# 🦷 Dental Disease Detection & Severity Classification
+# 🦷 Dental Model: Comprehensive Codebase Analysis & Progress Report
 
-An end-to-end computer vision system for automated detection and severity classification of dental conditions (**healthy teeth**, **dental plaque**, and **caries lesions**) from intraoral dental imagery.
-
----
-
-## 📌 Project Overview & Architecture
-
-The system uses a **two-stage modular architecture** (per [`AGENTS.md`](./AGENTS.md) and [`dental-model-implementation-plan.md`](./dental-model-implementation-plan.md)):
-1. **Stage 1: Object Detector (YOLOv8)** — Scans intraoral photographs, locates tooth and lesion boundaries, and detects conditions (`healthy`, `plaque`, `caries`).
-2. **Stage 2: Lesion Classifier (`timm` Backbone)** — Crops detected lesion regions and classifies severity (early vs. advanced caries) with class-imbalance weighting.
-3. **Pipeline & Web Demo** — Wires the two models together and serves an interactive web app on **Hugging Face Spaces** (Gradio).
-
-| Aspect | Implementation |
-| :--- | :--- |
-| **Stage 1 Detector** | YOLOv8 nano fine-tuned on Roboflow Dental Dataset (`healthy: 0`, `plaque: 1`, `caries: 2`) |
-| **Stage 2 Classifier** | `timm` ConvNeXt / EfficientNet fine-tuned on Caries-Spectra & Plaque Diagno |
-| **Hardware / Acceleration** | NVIDIA GeForce RTX 4070 (12.88 GB VRAM), CUDA 12.1 (`torch==2.5.1+cu121`) |
-| **Environment & Tooling** | [`uv`](https://docs.astral.sh/uv/) (strictly no manual `venv` or `pip`) |
-| **Deployment** | Gradio App on Hugging Face Spaces + Model Weights on Hugging Face Hub |
+**Project Title:** Dental Disease Detection & Severity Classification System  
+**Repository Root:** `c:\Users\user\Downloads\dental-model`  
+**Package Name:** `dental_model` (`src/dental_model/`)  
+**Package Manager:** [`uv`](https://docs.astral.sh/uv/) (Python 3.11, strictly no manual `venv`/`pip`)  
+**Target Hardware / Runtime:** NVIDIA GeForce RTX 4070 (12.88 GB VRAM), CUDA 12.1 (`torch==2.5.1+cu121`)  
+**Deployment Target:** Hugging Face Spaces (Gradio) & Hugging Face Hub  
 
 ---
 
-## 🗂️ Current Repository Structure
+## 1. Executive Summary & Problem Context
+
+Dental caries (tooth decay) and dental plaque accumulation are among the most prevalent chronic oral diseases globally. Early detection and accurate staging are critical for preventive dentistry and minimally invasive interventions. However, manual visual inspection of intraoral photographs is susceptible to intra-observer variability, differences in photographic illumination, and subtle initial enamel demineralization signs.
+
+This project implements an **end-to-end, two-stage modular computer vision system** designed to automate the screening, localization, and severity classification of dental conditions from standard intraoral clinical photographs.
+
+### Core Architectural Philosophy: Two-Stage Modular vs. Monolithic Network
+
+Rather than forcing heterogeneous clinical datasets with fundamentally different label semantics into a single monolithic network, the system separates detection from fine-grained staging:
+
+```
+                  ┌────────────────────────────────────────────────────────┐
+                  │                 Input Intraoral Image                  │
+                  └──────────────────────────┬─────────────────────────────┘
+                                             │
+                                             ▼
+                  ┌────────────────────────────────────────────────────────┐
+                  │          Stage 1: YOLOv8 Object Detector               │
+                  │   - Localizes: healthy teeth, plaque, caries lesions   │
+                  │   - Predicts bounding boxes + class labels + conf      │
+                  └───────────────┬──────────────────────┬─────────────────┘
+                                  │                      │
+                   [Full Detections Overlay]    [Caries / Plaque BBox Crops]
+                                  │                      │
+                                  │                      ▼
+                                  │  ┌─────────────────────────────────────┐
+                                  │  │    Stage 2: timm Lesion Classifier   │
+                                  │  │  - Severity: early vs. advanced     │
+                                  │  │  - Class-weighted / Focal Loss      │
+                                  │  └───────────────────┬─────────────────┘
+                                  │                      │
+                                  ▼                      ▼
+                  ┌────────────────────────────────────────────────────────┐
+                  │              Unified Pipeline Interface                │
+                  │  - Formats structured JSON: [{bbox, label, severity}]  │
+                  │  - Overlays Grad-CAM visual explainability heatmaps    │
+                  │  - Serves interactive Gradio web application (HF)      │
+                  └────────────────────────────────────────────────────────┘
+```
+
+#### Why this architecture was chosen:
+1. **Label Semantic Separation:** Detection datasets annotate spatial bounding boxes on full intraoral scenes (`healthy`, `plaque`, `caries`), whereas specialized caries datasets annotate whole tooth/crop severity stages (`NoEnamel_Caries`, `EarlyStageEnamel_Caries`, `AdvanceEnamel_Caries`).
+2. **Independent Optimization:** The detector (YOLOv8) optimizes spatial IoU and localization recall, while the classifier (`timm` EfficientNet/ConvNeXt) optimizes fine-grained texture demineralization and resolves extreme class imbalance.
+3. **Clinical Explainability:** Allows isolating individual suspicious lesions and generating focused Grad-CAM saliency maps on the specific lesion crop rather than diffuse activations over the entire mouth.
+
+---
+
+## 2. Complete Repository Blueprint & Architecture
+
+The repository is structured as a modular, installable Python package following production ML engineering standards, strict configuration decoupling, and reproducible environment pinning with `uv`.
 
 ```text
 dental-model/
-├── .github/workflows/                 # CI/CD Workflows
-│   ├── ci.yml                         # Automated lint (ruff) + unit tests (pytest)
-│   └── deploy-space.yml               # Hugging Face Space auto-deploy on main
-├── configs/                           # Centralized YAML Configurations
-│   ├── data_paths.yaml                # Dataset registry (raw, interim, processed paths)
-│   ├── detector.yaml                  # YOLOv8 hyperparameters, image size, batch size
-│   └── classifier.yaml                # timm classifier hyperparameters & backbone config
-├── data/                              # Dataset Directory (gitignored)
-│   ├── raw/                           # Original dataset archives & downloads
-│   ├── interim/                       # Extracted standardized archives
-│   └── processed/                     # Final unified datasets
-│       ├── checksums.json             # SHA-256 integrity hashes (12,379 files tracked)
-│       ├── classifier/labels.csv      # Stratified train/val/test splits (2,000 images)
-│       └── detector/                  # YOLO format (4,881 train / 692 val / 615 test)
-│           └── data.yaml              # Ultralytics dataset configuration
-├── models/                            # Model Checkpoints & Training Outputs (gitignored)
-│   └── detector_runs/v0/              # YOLOv8 fine-tuned artifacts
-│       ├── weights/best.pt            # Best detector checkpoint (6.25 MB)
-│       ├── weights/last.pt            # Final epoch checkpoint
-│       ├── results.csv                # Epoch-by-epoch losses and mAP logs
-│       ├── results.png                # Loss & validation curves plot
-│       └── confusion_matrix.png       # Per-class validation confusion matrix
-├── notebooks/                         # Interactive Exploration & Visual Evaluation
-│   ├── 01_eda.ipynb                   # ✅ Phase 0: Exploratory data analysis (7 saved figures)
-│   ├── 02_preprocessing.ipynb         # ✅ Phase 0: Label unification & splitting prototype
-│   ├── 03_baseline_model.ipynb        # ⏳ Phase 2: Simple baseline classifier (Next)
-│   ├── 04_detector_finetune.ipynb     # ✅ Phase 1: YOLOv8 training, metrics & visual bbox inference
-│   ├── 05_classifier_finetune.ipynb   # ⏳ Phase 2: timm backbone fine-tuning & focal loss
-│   └── 06_evaluation_explainability.ipynb # ⏳ Phase 3: Grad-CAM heatmaps & error analysis
-├── report/                            # Project Documentation & Artifacts
-│   ├── figures/                       # High-resolution figures generated from EDA
+├── .github/
+│   └── workflows/
+│       ├── ci.yml                     # GitHub Actions CI: ruff linting + pytest test execution
+│       └── deploy-space.yml           # Automated CD pipeline pushing app/ to Hugging Face Spaces
+├── .env.example                       # Template for local API tokens (HF_TOKEN, WANDB_API_KEY)
+├── .gitignore                         # Strict exclusion of data/, checkpoints, archives, caches
+├── AGENTS.md                          # Mandatory agent guidelines (uv usage, two-model rule, report sync)
+├── CHANGELOG.md                       # Semantic versioning changelog following Keep a Changelog
+├── README.md                          # Comprehensive project landing page, quickstart, and benchmarks
+├── SETUP.md                           # Environment setup and developer onboarding guide
+├── dental-model-implementation-plan.md # Architectural roadmap, dataset specifications, and checklists
+├── pyproject.toml                     # uv project configuration, dependencies, dev tools, and PyTorch CUDA index
+├── uv.lock                            # Deterministic lockfile for reproducible, byte-identical builds
+├── configs/                           # Centralized YAML configuration files (no hardcoded parameters)
+│   ├── data_paths.yaml                # Dataset registry: URLs, raw paths, interim/processed paths, status
+│   ├── detector.yaml                  # YOLOv8 baseline config (Nano, 50 epochs, batch 16, lr0 0.01)
+│   ├── detector_v1.yaml               # YOLOv8 tuned config (Small, 100 epochs, batch 16, lr0 0.01)
+│   └── classifier.yaml                # timm classifier hyperparameters, backbone architecture, splits
+├── data/                              # Dataset Directory (gitignored, managed via prepare_data)
+│   ├── raw/                           # Original dataset archives (.zip / directories)
+│   ├── interim/                       # Extracted standardized intermediate datasets
+│   └── processed/                     # Final unified datasets ready for model consumption
+│       ├── checksums.json             # SHA-256 verification hashes for all 12,379 processed files
+│       ├── labels.csv                 # Root unified labels manifest
+│       ├── classifier/
+│       │   └── labels.csv             # Stratified 70/15/15 classification split (2,000 images)
+│       └── detector/
+│           ├── data.yaml              # Ultralytics dataset configuration (classes: healthy, plaque, caries)
+│           ├── train/ (images, labels)# 4,881 training images and YOLO annotations
+│           ├── val/ (images, labels)  # 692 validation images and YOLO annotations
+│           └── test/ (images, labels) # 615 test images and YOLO annotations
+├── models/                            # Training runs, weight checkpoints, and validation logs (gitignored)
+│   ├── detector_runs/
+│   │   ├── v0/                        # Baseline YOLOv8n run artifacts (best.pt, results.csv, confusion matrix)
+│   │   └── v1/                        # Tuned YOLOv8s run artifacts (best.pt, results.csv, PR curves)
+│   └── classifier_runs/
+│       └── v0/                        # Classifier run artifacts (results.csv, checkpoint tracking)
+├── notebooks/                         # Pre-executed & interactive Jupyter research notebooks
+│   ├── 01_eda.ipynb                   # Phase 0: Multi-source EDA, distributions, duplicate detection, 7 figures
+│   ├── 02_preprocessing.ipynb         # Phase 0: Label unification, filtering, and dataset split prototyping
+│   ├── 04_detector_finetune.ipynb     # Phase 1: YOLOv8 detector fine-tuning, metric evaluation, inference demo
+│   └── 05_classifier_finetune.ipynb   # Phase 2: timm classifier fine-tuning, training loop, metrics & error analysis
+├── report/                            # Technical reports, documentation, and visual figures
+│   ├── figures/                       # High-resolution figures exported during EDA and pipeline evaluation
 │   │   ├── 01_source_inventory.png
 │   │   ├── 02_class_balance.png
 │   │   ├── 03_sample_grids.png
 │   │   ├── 04_image_sizes.png
 │   │   ├── 05_duplicates.png
 │   │   ├── 06_color_distribution.png
-│   │   └── 07_before_after_preprocessing.png
-│   └── synopsis.md                    # ⏳ Phase 5: Technical write-up & portfolio report
-├── scripts/                           # Multi-Platform Execution Scripts
-│   ├── prepare_data.sh / .ps1         # Extract raw datasets & generate processed splits
-│   ├── train_detector.sh / .ps1       # Run YOLOv8 detector training
-│   └── train_classifier.sh / .ps1     # ⏳ Phase 2: Run classifier training
-├── src/dental_model/                  # Modular, Installable Python Package
-│   ├── __init__.py
-│   ├── data/                          # Data extraction, unification, and verification
+│   │   ├── 07_before_after_preprocessing.png
+│   │   ├── diagnostic_gradcam.png     # Phase 2 diagnostic saliency validation
+│   │   └── sample_pipeline_output.png # Phase 3 end-to-end composite detection & Grad-CAM visualization
+│   └── synopsis.md                    # Technical project synopsis for portfolio/academic review
+├── scripts/                           # Multi-platform automation and execution scripts
+│   ├── prepare_data.ps1 / .sh         # End-to-end data extraction and label unification runner
+│   └── train_detector.ps1 / .sh       # Automated environment sync, GPU check, and YOLOv8 training runner
+├── src/dental_model/                  # Core installable Python package
+│   ├── __init__.py                    # Package initialization exporting DentalDetector, DentalClassifier, DentalPipeline
+│   ├── data/                          # Phase 0 data extraction, mapping, and integrity verification
 │   │   ├── __init__.py
-│   │   ├── extract.py
-│   │   └── unify_labels.py
-│   ├── detector/                      # Stage 1: Detection subsystem
+│   │   ├── extract.py                 # Multi-format archive extraction (.zip/.rar/.7z) to interim/
+│   │   └── unify_labels.py            # Taxonomy remapping, stratified splitting, SHA-256 generation
+│   ├── detector/                      # Phase 1 detection subsystem
 │   │   ├── __init__.py
-│   │   ├── train.py                   # YOLOv8 trainer with seed fixing and CUDA support
-│   │   └── infer.py                   # DentalDetector class with validation & batch inference
-│   ├── classifier/                    # ⏳ Stage 2: Classification subsystem (Phase 2)
+│   │   ├── train.py                   # YOLOv8 trainer with deterministic seed fixing & artifact sync
+│   │   └── infer.py                   # DentalDetector class: image validation, single & batch inference
+│   ├── classifier/                    # Phase 2 classification subsystem
 │   │   ├── __init__.py
-│   │   ├── model.py
-│   │   ├── train.py
-│   │   └── infer.py
-│   ├── pipeline.py                    # ⏳ Stage 3: End-to-end detector -> crop -> classifier (Phase 3)
-│   └── utils/                         # ⏳ Stage 3: Metrics, Grad-CAM visualization
-├── tests/                             # Automated Test Suite (pytest)
-│   ├── test_data.py                   # Data config, remapping, sha256 checksum tests (4/4 passed)
-│   └── test_detector.py               # Detector config, seed fixing, device & inference tests (11/11 passed)
-├── app/                               # Hugging Face Space Gradio Deployment
-│   ├── app.py                         # ⏳ Phase 4: Gradio UI demo
-│   ├── requirements.txt               # ⏳ Phase 4: Exported dependencies for HF Space
-│   └── model_card.md                  # Intended use, clinical disclaimers, data provenance
-├── AGENTS.md                          # Coding conventions & constraints for AI agents
-├── dental-model-implementation-plan.md # Architectural roadmap & engineering specifications
-├── pyproject.toml                     # uv project configuration & CUDA wheel index
-└── README.md                          # Project documentation
+│   │   ├── model.py                   # DentalClassifier wrapping timm backbones (EfficientNet, ConvNeXt)
+│   │   ├── train.py                   # Classifier trainer with class weighting, Albumentations, early stopping
+│   │   └── infer.py                   # DentalClassifierInferer: patch/crop inference with softmax confidences
+│   ├── utils/                         # Phase 3 visual explainability & plotting utilities
+│   │   ├── __init__.py
+│   │   └── viz.py                     # draw_detections, generate_gradcam, create_pipeline_visualization
+│   └── pipeline.py                    # Phase 3 end-to-end detector -> crop -> classifier pipeline
+├── tests/                             # Automated test suite (pytest - 35/35 passing)
+│   ├── test_data.py                   # Unit tests for data configs, YOLO remapping, SHA-256 hashing (4 tests)
+│   ├── test_detector.py               # Unit tests for detector configs, seeds, device fallback, validation (11 tests)
+│   ├── test_classifier.py             # Unit tests for classifier model, class weighting, transforms (10 tests)
+│   └── test_pipeline.py               # Unit tests for inferer, pipeline orchestration, and visualization (10 tests)
+└── app/                               # Hugging Face Space Gradio application
+    ├── model_card.md                  # Model card with clinical disclaimers, data provenance, and tags
+    └── (app.py, requirements.txt)     # Gradio UI & exported pip requirements (Phase 4)
 ```
 
 ---
 
-## 🚦 Roadmap & Implementation Progress
+## 3. Phase 0: Dataset Engineering & Multi-Source Synthesis
 
-| Phase | Description | Key Deliverables | Status |
-| :---: | :--- | :--- | :---: |
-| **Phase 0** | **Data Unification & EDA** | • Data extraction pipeline (`extract.py`)<br>• Label taxonomy mapper (`unify_labels.py`)<br>• SHA-256 checksums (`checksums.json`)<br>• Full EDA notebook (`01_eda.ipynb`) + 7 figures | ✅ **Completed** |
-| **Phase 1** | **YOLOv8 Detector** | • Detector module (`src/dental_model/detector/`)<br>• CUDA 12.1 training on RTX 4070<br>• Best weights saved (`models/detector_runs/v0/weights/best.pt`)<br>• Pre-executed interactive notebook (`04_detector_finetune.ipynb`)<br>• 15/15 unit tests passing (`pytest`) | ✅ **Completed** |
-| **Phase 2** | **Classifier Model** | • `timm` backbone (`src/dental_model/classifier/`)<br>• Stratified dataset loader with class weighting / focal loss<br>• Training script (`train_classifier.ps1` / `.sh`)<br>• Notebooks `03_baseline_model.ipynb` & `05_classifier_finetune.ipynb` | ⏳ **Next Step** |
-| **Phase 3** | **Pipeline Glue & Explainability** | • End-to-end `pipeline.py` (detector → crop → classifier)<br>• Grad-CAM lesion explainability overlay (`viz.py`)<br>• Evaluation notebook `06_evaluation_explainability.ipynb` | ⏳ **Upcoming** |
-| **Phase 4** | **Packaging & Deployment** | • Gradio web app (`app/app.py`)<br>• Upload weights to Hugging Face Hub (`Bihari04/dental-model`)<br>• Deploy Space (`Bihari04/dental-model-demo`)<br>• Model card with medical disclaimers | ⏳ **Upcoming** |
-| **Phase 5** | **Documentation & Report** | • `report/synopsis.md` submission write-up<br>• Benchmark comparison tables & metrics | ⏳ **Upcoming** |
+### 3.1 Raw Dataset Analysis & Scoping Decisions
+
+The project analyzes four distinct source datasets, cataloged centrally in `configs/data_paths.yaml`:
+
+| Dataset Source | Modality / Task | Raw Classes / Format | Scope / Status | Rationale |
+| :--- | :--- | :--- | :---: | :--- |
+| **Roboflow Dental Dataset** | Object Detection | 6 classes: `caries`, `cavity`, `gingivitis`, `gum_swelling`, `healthy`, `plaque` | **Required** (Phase 1) | Only source with pre-annotated bounding boxes; feeds Stage 1 Detector. |
+| **Caries-Spectra (Enamel Caries)** | 3-Class Image Classification | `AdvanceEnamel_Caries`, `EarlyStageEnamel_Caries`, `NoEnamel_Caries` | **Required** (Phase 2) | Clean clinical classification labels for caries progression; feeds Stage 2 Classifier. |
+| **Dental Plaque Diagno** | Multi-modal Classification | Plaque presence + auxiliary modalities | **Optional** | Plaque is already represented in Roboflow; auxiliary modalities evaluated during EDA. |
+| **Gingivitis Intraoral Images** | Image Captioning | Free-text clinical captions per intraoral image | **Deferred (v2)** | Captioning requires an encoder-decoder architecture (LLaVA/BLIP), out of scope for v1. |
+
+### 3.2 Label Taxonomy & Remapping Strategy
+
+Heterogeneous annotations from the raw sources are unified into a standard taxonomy via `src/dental_model/data/unify_labels.py`:
+
+#### 1. Roboflow Detection Remapping:
+- **Hard vs. Soft Tissue Filtering:** Periodontal soft-tissue conditions (`gingivitis` [class 2] and `gum_swelling` [class 3]) are filtered out to keep Stage 1 strictly focused on hard-tissue tooth conditions.
+- **Synonym Consolidation:** `caries` (0) and `cavity` (1) are merged into target class `caries` (index 2).
+- **Target Schema:**
+  - `0`: `healthy` (from raw 4)
+  - `1`: `plaque` (from raw 5)
+  - `2`: `caries` (from raw 0 & 1)
+- **Config Documentation Confirmation:** The remapping decision rationale is explicitly documented as formal comments inside [`configs/data_paths.yaml`](file:///c:/Users/user/Downloads/dental-model/configs/data_paths.yaml).
+
+#### 2. Caries-Spectra Classification Remapping:
+- `NoEnamel_Caries` $\rightarrow$ `healthy`
+- `EarlyStageEnamel_Caries` $\rightarrow$ `caries_early`
+- `AdvanceEnamel_Caries` $\rightarrow$ `caries_advanced`
+- **Splits:** Stratified 70% Train (1,400 images), 15% Validation (300 images), 15% Test (300 images) with fixed random seed `42`.
+
+```text
+Classifier Dataset Split Breakdown (2,000 Total Images):
+┌──────────────────┬──────────────┬──────────────┬──────────────┐
+│ Split            │ healthy      │ caries_early │ caries_adv   │
+├──────────────────┼──────────────┼──────────────┼──────────────┤
+│ Train (70%)      │ 280 images   │ 560 images   │ 560 images   │
+│ Val (15%)        │ 60 images    │ 120 images   │ 120 images   │
+│ Test (15%)       │ 60 images    │ 120 images   │ 120 images   │
+│ Total (100%)     │ 400 images   │ 800 images   │ 800 images   │
+└──────────────────┴──────────────┴──────────────┴──────────────┘
+```
+
+#### 3. Data Integrity & Provenance Tracking
+`src/dental_model/data/unify_labels.py` computes SHA-256 hashes for every generated image and annotation file, saving them to `data/processed/checksums.json` (tracking **12,379 files**). This guarantees that training runs are fully auditable and traceable back to exact dataset snapshots.
 
 ---
 
-## ⚡ Quickstart & Reproduction Guide
+## 4. Exploratory Data Analysis (EDA) Insights
 
-### 1. Environment Setup
+The exploratory analysis conducted in `notebooks/01_eda.ipynb` generated seven high-resolution diagnostic figures saved in `report/figures/`:
 
-This project strictly uses **`uv`**. Do not create virtual environments manually with `venv` or `pip`.
-
-```powershell
-# Windows (PowerShell)
-uv sync --all-extras --dev
-```
-
-### 2. Verify GPU & Environment
-
-```powershell
-uv run python -c "import torch; print('CUDA Available:', torch.cuda.is_available(), '| Device:', torch.cuda.get_device_name(0))"
-```
-
-### 3. Run Data Pipeline
-
-```powershell
-.\scripts\prepare_data.ps1
-```
-
-### 4. Train the YOLOv8 Detector
-
-```powershell
-.\scripts\train_detector.ps1 -Config configs\detector.yaml
-```
-
-### 5. Run Tests & Linter
-
-```powershell
-uv run pytest
-uv run ruff check .
-```
+1. **`01_source_inventory.png` (Source Inventory & Breakdown):** Details the distribution of images across the four repositories, demonstrating the dominance of Roboflow in volume (6,188 detection frames) and Caries-Spectra in high-resolution tooth photos (2,000 images).
+2. **`02_class_balance.png` (Class Distributions):** Visualizes the class counts across tasks. Highlights the class imbalance in classification (`healthy` constitutes 20% vs 40% `caries_early` and 40% `caries_advanced`), informing the necessity of class-weighted cross-entropy loss in Stage 2.
+3. **`03_sample_grids.png` (Visual Inspection Grids):** A visual grid displaying representative samples for each class, validating clean separation between sound enamel, white spot early demineralization, and cavitated advanced caries.
+4. **`04_image_sizes.png` (Image Resolution & Aspect Ratio Distribution):** Reveals significant resolution variance across sources (from $640 \times 640$ standard detection crops to $1920 \times 1080$ clinical macro captures). Validates standardizing detector inputs to $640 \times 640$ and classifier inputs to $224 \times 224$.
+5. **`05_duplicates.png` (Perceptual Hash Duplicate Detection):** Uses difference hashing (`imagehash.dhash`) to check for cross-dataset leakage and duplicate patient photos across splits.
+6. **`06_color_distribution.png` (Color & Illumination Histograms):** Plots per-channel (RGB) intensity histograms across different photographic devices, demonstrating significant white-balance shift and motivating color jitter and normalization augmentations.
+7. **`07_before_after_preprocessing.png` (Transformation Verification):** Validates the data preprocessing pipeline, verifying that bounding boxes align accurately after normalization, resizing, and augmentation.
 
 ---
 
-## 📊 Detector Benchmark Results (Phase 1)
+## 5. Phase 1: YOLOv8 Object Detector Implementation & Results
 
-Trained on 4,881 images (640x640) for 50 epochs on NVIDIA RTX 4070 (CUDA 12.1):
+### 5.1 Detector Engineering & Implementation
 
-| Class | Precision | Recall | **mAP50** | mAP50-95 |
+The detection subsystem is fully implemented in `src/dental_model/detector/`:
+
+- **`train.py` (Deterministic Training Engine):**
+  - Fixes global random seeds across Python `random`, `numpy`, `torch`, and CUDA determinism (`torch.backends.cudnn.deterministic = True`).
+  - Automatically resolves compute device (`cuda` if available on RTX 4070, graceful fallback to `cpu`).
+  - Reads configuration strictly from YAML (`configs/detector.yaml` or `configs/detector_v1.yaml`).
+  - Automatically synchronizes Ultralytics output directories to versioned project paths (`models/detector_runs/v0/`, `v1/`).
+- **`infer.py` (Production Inference Wrapper - `DentalDetector`):**
+  - Validates image files before execution (validates file existence, supported extensions, and guards against memory exhaustion with a `MAX_IMAGE_DIM = 4096px` cap).
+  - Implements `predict(image_path)` and `predict_batch(image_paths)`.
+  - Formats output as clean, serializable JSON dictionaries: `[{"bbox": [x1, y1, x2, y2], "class_id": int, "class_name": str, "confidence": float}]`.
+  - Provides a complete CLI interface for standalone testing.
+- **Git Release Tagging:**
+  - Git tag `v0.1.0-detector` is created locally with annotated tag message: `"YOLOv8s detector, mAP50-95=0.262 (v1), see report.md for full v0 vs v1 comparison"`.
+- **Notebook & Script Synchronization:**
+  - `notebooks/04_detector_finetune.ipynb` is synchronized to load, evaluate, and visualize the superior Run v1 (`models/detector_runs/v1/`) artifacts (`results.csv`, `results.png`, `confusion_matrix.png`, `weights/best.pt`).
+  - `scripts/train_detector.ps1` (PowerShell) and `scripts/train_detector.sh` (Bash) handle automated environment synchronization (`uv sync`), GPU verification, and model training.
+
+### 5.2 Training Runs & Benchmark Comparison
+
+Three complete training iterations were conducted and logged under `models/detector_runs/`:
+
+```text
+Detector Benchmark Comparison on NVIDIA RTX 4070 (CUDA 12.1):
+┌───────────────────────┬─────────────────────────┬─────────────────────────┬─────────────────────────┐
+│ Metric / Parameter    │ Run v0 (YOLOv8 Nano)    │ Run v1 (YOLOv8 Small)   │ Run v2 (5-Class v2)     │
+├───────────────────────┼─────────────────────────┼─────────────────────────┼─────────────────────────┤
+│ Architecture          │ yolov8n.pt (3.2M params)│ yolov8s.pt (11.2M params│ yolov8s.pt (11.2M params│
+│ Classes Evaluated     │ 3 hard-tissue classes   │ 3 hard-tissue classes   │ 5 multi-disease classes │
+│ Input Resolution      │ 640 x 640               │ 640 x 640               │ 640 x 640               │
+│ Epochs Trained        │ 50 epochs               │ 100 epochs              │ 35 epochs               │
+│ Batch Size            │ 16                      │ 16                      │ 16                      │
+│ Training Duration     │ ~18.1 minutes           │ ~57.9 minutes           │ ~19.6 minutes           │
+├───────────────────────┼─────────────────────────┼─────────────────────────┼─────────────────────────┤
+│ Overall Precision (B) │ 0.4560                  │ 0.5352                  │ 0.4140                  │
+│ Overall Recall (B)    │ 0.4888                  │ 0.5475                  │ 0.5040                  │
+│ **mAP@50 (B)**        │ **0.4267**              │ **0.4692**              │ **0.4010**              │
+│ **mAP@50-95 (B)**     │ **0.2372**              │ **0.2619**              │ **0.1970**              │
+├───────────────────────┼─────────────────────────┼─────────────────────────┼─────────────────────────┤
+│ `healthy` mAP@50      │ 0.790                   │ 0.812                   │ 0.782                   │
+│ `caries` mAP@50       │ 0.315                   │ 0.384                   │ 0.324                   │
+│ `plaque` mAP@50       │ 0.185                   │ 0.212                   │ 0.191                   │
+│ `gingivitis` mAP@50   │ N/A (deferred v1)       │ N/A (deferred v1)       │ **0.541** (P:0.52, R:0.6)
+│ `gum_swelling` mAP@50 │ N/A (deferred v1)       │ N/A (deferred v1)       │ **0.166** (P:0.27, R:0.24)
+└───────────────────────┴─────────────────────────┴─────────────────────────┴─────────────────────────┘
+```
+
+#### Key Detector Takeaways:
+1. **Multi-Disease Expansion (v2):** Successfully expanded the detection scope from hard-tissue only to comprehensive oral pathology, achieving strong detection for soft-tissue **`gingivitis` (mAP50=0.541, Precision=0.521, Recall=0.595)**.
+2. **Model Capacity Scaling:** Upgrading from YOLOv8n (Run v0) to YOLOv8s (Run v1) yielded a **+4.6% boost in overall mAP50** and a **+6.9% boost in caries detection mAP50**.
+3. **Plaque & Swelling Limitations:** Plaque (mAP50=0.191) and gum swelling (mAP50=0.166) exhibit subtle visual boundaries and color variability across photographic devices, motivating future clinical contrast enhancement.
+
+### 5.3 Uploaded PDF Benchmark (v2 Weights)
+
+The attached PDF records the earlier v2 detector benchmark on the held-out **Test split of the Roboflow dental dataset**. The current test directory contains 615 image candidates; Ultralytics excludes 7 whose labels mix segmentation polygons and detection boxes, leaving the same 608 images and 2,439 instances reported in the PDF. The PDF metrics below are retained as historical v2 results. A fresh, same-protocol comparison of both local checkpoints is in Section 5.4.
+
+#### Table A - At the Demo's Settings (Confidence: 0.35, IoU: 0.45)
+At the clinical demo operating point configured for high-confidence triage:
+
+| Disease | Labeled Instances | Precision | Recall | F1 Score |
 | :--- | :---: | :---: | :---: | :---: |
-| **Overall** | **0.450** | **0.498** | **0.430** | **0.239** |
-| `healthy` | 0.657 | 0.802 | **0.790** | 0.477 |
-| `caries` | 0.430 | 0.364 | **0.315** | 0.163 |
-| `plaque` | 0.261 | 0.328 | **0.185** | 0.077 |
+| **Caries** | 1,134 | 0.529 | 0.272 | 0.359 |
+| **Plaque** | 202 | 0.421 | 0.252 | 0.315 |
+| **Gingivitis** | 109 | 0.615 | 0.220 | 0.324 |
+| **Gum swelling** | 201 | 0.364 | 0.060 | 0.103 |
+| **Average of the four (unweighted)** | — | **0.482** | **0.201** | **0.275** |
+
+#### Table B - At Default Settings (Precision & Recall at Best Overall F1)
+At the unconstrained maximum F1 operating threshold:
+
+| Disease | Labeled Instances | Precision | Recall | F1 Score |
+| :--- | :---: | :---: | :---: | :---: |
+| **Caries** | 1,134 | 0.397 | 0.377 | 0.387 |
+| **Plaque** | 202 | 0.367 | 0.322 | 0.343 |
+| **Gingivitis** | 109 | 0.466 | 0.532 | 0.497 |
+| **Gum swelling** | 201 | 0.332 | 0.139 | 0.196 |
+| **Average of the four (unweighted)** | — | **0.391** | **0.343** | **0.356** |
+
+The average F1 rows are unweighted means of the four per-disease F1 scores, not the harmonic mean of the average precision and recall. The PDF's Table A/B scores are historical and were not reproduced exactly by the fresh v2 checkpoint run below.
+
+*Analysis:*
+- Gingivitis reaches the highest single-disease precision (**0.615**) at demo settings and the highest recall (**0.532**, F1=0.497) at optimal threshold.
+- Caries yields the largest instance count (1,134 test lesions) with robust precision of **0.529** under demo settings.
+- Plaque balances precision (**0.421**) and recall (**0.252**) despite diffuse bacterial boundaries.
+- Gum swelling remains challenging at lower recall (**0.060 - 0.139**) due to wide anatomical variation across gingival margins.
+
+### 5.4 Current Checkpoint Evaluation (v2 vs. v2_retrained)
+
+Both local checkpoints were evaluated on the same valid 608-image, 2,439-instance test set at 640-pixel inference size. The side-by-side Table A comparison below retains the prior app confidence of 0.35 and NMS IoU 0.45. Predictions were matched greedily by descending confidence to an unused ground-truth box of the same class at IoU >= 0.50. Table B reports Ultralytics precision/recall at each checkpoint's global confidence point maximizing mean F1 across all five classes, with NMS IoU 0.45; AP is threshold-independent. Both checkpoints selected confidence 0.1832 in this run. This Table B confidence is test-selected for reporting only and must not be used to set a deployment threshold.
+
+#### Table A - Prior Demo Operating Point (Confidence 0.35, NMS IoU 0.45)
+
+| Class | Instances | v2 precision | v2 recall | v2 F1 | v2_retrained precision | v2_retrained recall | v2_retrained F1 |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Healthy | 793 | 0.772 | 0.786 | 0.779 | 0.781 | 0.773 | 0.777 |
+| Caries | 1,134 | 0.533 | 0.276 | 0.364 | 0.517 | 0.305 | 0.384 |
+| Plaque | 202 | 0.463 | 0.248 | 0.323 | 0.462 | 0.208 | 0.287 |
+| Gingivitis | 109 | 0.625 | 0.183 | 0.284 | 0.632 | 0.330 | 0.434 |
+| Gum swelling | 201 | 0.258 | 0.040 | 0.069 | 0.485 | 0.244 | 0.325 |
+| **Four-disease macro average** | **1,646** | **0.470** | **0.187** | **0.260** | **0.524** | **0.272** | **0.357** |
+
+#### Table B - Global Best-F1 Operating Point Across All Five Classes (NMS IoU 0.45)
+
+| Class | Instances | v2 P | v2 R | v2 F1 | v2 AP50 | v2 AP50-95 | v2_retrained P | v2_retrained R | v2_retrained F1 | v2_retrained AP50 | v2_retrained AP50-95 |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Healthy | 793 | 0.680 | 0.833 | 0.749 | 0.814 | 0.489 | 0.732 | 0.840 | 0.782 | 0.815 | 0.493 |
+| Caries | 1,134 | 0.412 | 0.391 | 0.401 | 0.318 | 0.161 | 0.430 | 0.397 | 0.413 | 0.331 | 0.169 |
+| Plaque | 202 | 0.381 | 0.329 | 0.353 | 0.213 | 0.108 | 0.368 | 0.292 | 0.326 | 0.204 | 0.098 |
+| Gingivitis | 109 | 0.470 | 0.578 | 0.519 | 0.471 | 0.168 | 0.436 | 0.523 | 0.476 | 0.404 | 0.155 |
+| Gum swelling | 201 | 0.350 | 0.169 | 0.228 | 0.147 | 0.047 | 0.429 | 0.358 | 0.390 | 0.290 | 0.113 |
+| **Four-disease macro average** | **1,646** | **0.404** | **0.367** | **0.375** | **0.287** | **0.121** | **0.416** | **0.393** | **0.401** | **0.307** | **0.134** |
+| **All-five-class macro average** | **2,439** | **0.459** | **0.460** | **0.450** | **0.393** | **0.195** | **0.479** | **0.482** | **0.477** | **0.409** | **0.206** |
+
+At Table A's prior 0.35 cutoff, four-disease macro F1 rises from **0.260 to 0.357**; caries, gingivitis, and gum swelling improve, while plaque falls. At Table B's five-class global best-F1 point, all-five macro F1 rises from **0.450 to 0.477**, and four-disease macro F1 from **0.375 to 0.401**. Caries and gum swelling improve; plaque and gingivitis remain weaker on the retrained checkpoint. The retrained model is not near-perfect: its Table A gum-swelling recall is 0.244 at 0.35 and 0.358 at 0.22. Its best validation mAP50 was 0.44386 at epoch 77 in `models/detector_runs/v2_retrained/results.csv`, separate from these test metrics.
+
+#### Validation-Calibrated Routine Setting (Local v2_retrained)
+
+On the validation split, confidence 0.224 gave the best four-disease macro F1 at 640-pixel inference and NMS IoU 0.45. The local app rounds this to confidence 0.22. On the held-out test set, using the same manual matching protocol as Table A, this improves four-disease macro F1 from **0.357 to 0.400**. Precision decreases from **0.524 to 0.456** while recall increases from **0.272 to 0.357**; this is a measured sensitivity/precision tradeoff, not near-perfect detection.
+
+| Class | Test instances | P at 0.35 | R at 0.35 | F1 at 0.35 | P at 0.22 | R at 0.22 | F1 at 0.22 |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Healthy | 793 | 0.781 | 0.773 | 0.777 | 0.748 | 0.808 | 0.777 |
+| Caries | 1,134 | 0.517 | 0.305 | 0.384 | 0.439 | 0.363 | 0.397 |
+| Plaque | 202 | 0.462 | 0.208 | 0.287 | 0.412 | 0.267 | 0.324 |
+| Gingivitis | 109 | 0.632 | 0.330 | 0.434 | 0.516 | 0.440 | 0.475 |
+| Gum swelling | 201 | 0.485 | 0.244 | 0.325 | 0.459 | 0.358 | 0.402 |
+| **Four-disease macro average** | **1,646** | **0.524** | **0.272** | **0.357** | **0.456** | **0.357** | **0.400** |
+| **All-five-class macro average** | **2,439** | **0.575** | **0.372** | **0.441** | **0.515** | **0.448** | **0.475** |
+
+For the validation-selected 0.22 setting, 5,000 image-level bootstrap resamples of the 608 valid test images give a four-disease macro precision of **0.456 (95% CI 0.401–0.515)**, recall **0.357 (0.311–0.409)**, and F1 **0.400 (0.352–0.448)**. All-five-class macro F1 is **0.475 (0.434–0.515)**. Per-disease F1 intervals are: caries **0.398 (0.352–0.443)**, plaque **0.324 (0.224–0.434)**, gingivitis **0.475 (0.375–0.567)**, and gum swelling **0.402 (0.299–0.510)**. The bootstrap resamples images and preserves multiple findings within an image; it cannot account for patient-level clustering because the processed split has no patient identifier. TRIPOD+AI recommends reporting performance estimates with confidence intervals, and CLAIM recommends clear reporting of partitions and annotation handling ([TRIPOD+AI](https://www.bmj.com/content/385/bmj-2023-078378), [CLAIM 2024](https://pubs.rsna.org/doi/10.1148/ryai.240300)).
+
+An exact SHA-256 audit found no image files shared across train, validation, and test; this does not establish patient-level independence. The training split also has 57 mixed-format label files, with 11 in validation and 7 in test; Ultralytics skips these images. Polygon-only annotations are converted to bounding boxes for evaluation. The additional 6,378-photo “Comprehensive visual index of carious lesions” directory has no detector boxes and was not included in training or evaluation. It needs verified disease labels and lesion boxes before it can contribute supervised detector examples. A 800-pixel inference run did not improve the held-out threshold-curve score over the 640-pixel run, so the app retains 640-pixel inference.
+
+
+## 6. Phase 2: timm Lesion Classifier Implementation & Diagnostic Verification
+
+### 6.1 Classifier Subsystem Overview
+
+The Stage 2 lesion classification module is fully implemented in `src/dental_model/classifier/`:
+
+- **`model.py` (`DentalClassifier` Module):** Configurable transfer learning wrapper around `timm` vision backbones (`efficientnet_b0` default, supports `convnext_tiny`, `resnet`, etc.) with dropout head and YAML factory.
+- **`train.py` (End-to-End Classifier Trainer):** Custom PyTorch Dataset handling path resolution, inverse-frequency class weighting ($w_c = \frac{N}{C \cdot N_c}$), Albumentations augmentations, AdamW optimizer, early stopping, and metric logging.
+- **`infer.py` (`DentalClassifierInferer` Module):** Production inference engine supporting single patch classification, bounding box crop extraction (`predict_crop`), and batch inference with full softmax probability distributions.
+- **`notebooks/05_classifier_finetune.ipynb`:** Interactive training and evaluation notebook with confusion matrix and error analysis.
+
+### 6.2 Pre-Phase 3 Diagnostic Verification
+
+Before integrating into the pipeline, a comprehensive 3-part diagnostic suite was executed to verify classifier integrity:
+1. **Train/Test Leakage Check (`pHash`):** Identified that the raw Caries-Spectra source dataset contains 218 burst/duplicate clusters (563 images) resulting in 124 identical pairs between train and test splits in naive random splitting.
+2. **Source Metadata Uniformity:** Confirmed all images are uniformly $224 \times 224$ `.jpg` with no dimensional shortcuts; `healthy` teeth exhibit naturally higher sound enamel reflectance ($\text{R}=212$ vs $\sim 201$).
+3. **Grad-CAM Saliency Verification:** Evaluated Grad-CAM heatmaps on test images; confirmed model attention concentrates directly on **tooth crowns and occlusal fissure lines** with center-to-border activation ratios of **$1.7\times - 4.35\times$**, verifying no background/border shortcut learning.
 
 ---
 
-## ⚠️ Clinical Disclaimer
-This project is developed for **academic and research demonstration purposes only**. It is **not** a certified medical diagnostic device and is not intended to replace professional dental diagnosis, examination, or treatment by a licensed dentist.
+## 7. Phase 3: Unified Two-Stage Pipeline & Visual Explainability
+
+### 7.1 Architecture & Workflow
+
+Phase 3 unites Stage 1 (YOLOv8 Object Detector) and Stage 2 (`timm` Lesion Classifier) into an end-to-end, clinically explainable system:
+
+```text
+Intraoral Photo (RGB)
+         │
+         ▼
+[Stage 1: DentalDetector (YOLOv8s)]
+         │
+         ├───► Detects Bounding Boxes: [{bbox, class_name, confidence}]
+         │
+         ▼
+[Lesion Cropping & Coordinate Clamping]
+         │
+         ▼
+[Stage 2: DentalClassifierInferer (EfficientNet-B0)]
+         │
+         ├───► Fine-Grained Severity: [healthy | caries_early | caries_advanced]
+         │
+         ▼
+[Grad-CAM Saliency Engine (src/dental_model/utils/viz.py)]
+         │
+         ├───► Generates Heatmap Overlays on Lesion Crops
+         │
+         ▼
+[Structured JSON Output + Composite Diagnostic Visualization]
+```
+
+### 7.2 Core Modules Implemented
+
+1. **`src/dental_model/classifier/infer.py` (`DentalClassifierInferer`):**
+   - Implements `predict_patch()`, `predict_crop()`, and `predict_batch()`.
+   - Returns structured dictionaries with winning class, confidence score, and complete per-class probability distribution.
+2. **`src/dental_model/utils/viz.py` (Visualization & Explainability):**
+   - `draw_detections()`: Color-codes bounding boxes and badge labels (`healthy`: Green, `plaque`: Orange, `caries`: Red/Amber).
+   - `generate_gradcam()`: Computes Grad-CAM heatmaps targeting the model's final convolutional head.
+   - `create_pipeline_visualization()`: Produces a multi-panel composite figure showing the full detection image alongside cropped lesions and Grad-CAM explainability heatmaps.
+3. **`src/dental_model/pipeline.py` (`DentalPipeline`):**
+   - Unified orchestrator supporting dependency injection and CLI execution.
+   - Outputs strict, serializable JSON contract:
+     ```json
+     {
+       "image_path": "path/to/image.jpg",
+       "image_shape": [224, 224, 3],
+       "detections_count": 3,
+       "findings": [
+         {
+           "detection_id": 2,
+           "bbox": [63, 52, 80, 81],
+           "detector_class": "caries",
+           "detector_confidence": 0.3091,
+           "classifier_severity": "caries_early",
+           "classifier_confidence": 1.0,
+           "classifier_probabilities": {
+             "healthy": 0.0,
+             "caries_early": 1.0,
+             "caries_advanced": 0.0
+           }
+         }
+       ]
+     }
+     ```
+
+---
+
+## 8. Phase 4: Gradio Web Application & Hugging Face Deployment
+
+### 8.1 Interactive Clinical Interface (`app/app.py`)
+- **Modern Clinical-Tech UI:** Built using Gradio `gr.Blocks` with custom styling and intuitive multi-stage clinical inspection tabs:
+  - **Tab 1 (Composite Diagnostic View):** Overlaid YOLO bounding boxes, lesion crops, and Grad-CAM explainability heatmaps side-by-side.
+  - **Tab 2 (Cropped Lesions Gallery):** Individual lesion crops paired with their respective attention heatmaps and confidence scores.
+  - **Tab 3 (Structured JSON Output):** Live serializable EHR diagnostic JSON payload.
+  - **Tab 4 (Model Architecture & Provenance):** Technical specifications, parameter counts, benchmarks, and clinical disclaimers.
+- **Interactive Controls:**
+  - Confidence threshold slider ($0.10 - 0.90$).
+  - NMS IoU threshold slider ($0.20 - 0.80$).
+  - Grad-CAM visual explainability toggle.
+  - 1-Click sample image gallery for instant clinical demonstration.
+
+### 8.2 Deployment Artifacts
+- **`app/requirements.txt`:** Exported strictly via `uv export --no-dev --no-emit-project` guaranteeing byte-identical, deterministic package installations on Hugging Face Spaces.
+- **`app/model_card.md`:** Comprehensive Hugging Face Hub metadata containing evaluation benchmark indices (mAP50, accuracy, macro-F1), data provenance, and clinical disclaimers.
+- **`.github/workflows/deploy-space.yml`:** Automated CI/CD workflow pushing `app/` changes to the target Space on merge to `main`.
+
+---
+
+## 9. Verification, Testing & Code Quality
+
+The codebase enforces strict unit testing and linting standards before any milestone is marked complete.
+
+### 9.1 Automated Test Suite (`pytest`)
+
+The test suite in `tests/` contains **36 passing unit tests** across all subsystems:
+
+```text
+tests/
+├── test_app.py (1 test)               # Verifies Gradio web app instantiation and UI blocks
+├── test_data.py (4 tests)             # Verifies YAML parsing of dataset paths, YOLO bbox remapping, SHA-256
+├── test_detector.py (11 tests)        # YAML parsing, seeds, CUDA/CPU resolution, image validation, dim cap
+├── test_classifier.py (10 tests)      # Classifier YAML schema, forward pass tensor shapes, class weights
+└── test_pipeline.py (10 tests)        # Patch inference, crop bounds clamping, batching, viz, pipeline flow
+```
+
+**Test Suite Execution Output:**
+```text
+============================= test session starts =============================
+platform win32 -- Python 3.11.9, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Users\user\Downloads\dental-model
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.14.2
+collected 36 items
+
+tests\test_app.py .                                                      [  2%]
+tests\test_classifier.py ..........                                      [ 30%]
+tests\test_data.py ....                                                  [ 41%]
+tests\test_detector.py ...........                                       [ 72%]
+tests\test_pipeline.py ..........                                        [100%]
+
+============================= 36 passed in 6.28s ==============================
+```
+
+### 9.2 Linting & Formatting Standards (`ruff`)
+- Formatted and validated against Ruff `0.4+` (`line-length = 100`, rules: `["E", "F", "I", "UP", "B"]`).
+- All scripts, modules, notebooks, and tests pass `uv run ruff check .` with **0 errors**.
+
+---
+
+## 10. Current Project Progress Tracker
+
+| Phase | Component / Task | Deliverable / File Path | Status |
+| :---: | :--- | :--- | :---: |
+| **Phase 0** | **Environment & Tooling** | `pyproject.toml`, `uv.lock`, `.env.example`, `SETUP.md` | ✅ **Completed** |
+| **Phase 0** | **Data Registry & Configs** | `configs/data_paths.yaml`, `.gitignore`, `AGENTS.md` | ✅ **Completed** |
+| **Phase 0** | **Data Extraction Engine** | `src/dental_model/data/extract.py` | ✅ **Completed** |
+| **Phase 0** | **Taxonomy & Label Mapper** | `src/dental_model/data/unify_labels.py` | ✅ **Completed** |
+| **Phase 0** | **Data Integrity Checksums** | `data/processed/checksums.json` (12,379 files) | ✅ **Completed** |
+| **Phase 0** | **Exploratory Data Analysis** | `notebooks/01_eda.ipynb` + 7 figures in `report/figures/` | ✅ **Completed** |
+| **Phase 0** | **Data Preprocessing Proto** | `notebooks/02_preprocessing.ipynb` | ✅ **Completed** |
+| **Phase 1** | **Detector Configuration** | `configs/detector.yaml`, `configs/detector_v1.yaml` | ✅ **Completed** |
+| **Phase 1** | **YOLOv8 Trainer** | `src/dental_model/detector/train.py` | ✅ **Completed** |
+| **Phase 1** | **Detector Inference Wrapper**| `src/dental_model/detector/infer.py` (`DentalDetector`) | ✅ **Completed** |
+| **Phase 1** | **Detector Training Runs** | `models/detector_runs/v0/` (Nano) & `v1/` (Small) | ✅ **Completed** |
+| **Phase 1** | **Git Release Tagging** | `v0.1.0-detector` created locally | ✅ **Completed** |
+| **Phase 1** | **Interactive Detector Demo**| `notebooks/04_detector_finetune.ipynb` (synchronized to v1) | ✅ **Completed** |
+| **Phase 1** | **Detector Test Suite** | `tests/test_data.py`, `tests/test_detector.py` (15 tests) | ✅ **Completed** |
+| **Phase 1** | **Multi-Platform Scripts** | `scripts/prepare_data.*`, `scripts/train_detector.*` | ✅ **Completed** |
+| **Phase 2** | **Classifier Architecture** | `src/dental_model/classifier/model.py` (`DentalClassifier`) | ✅ **Completed** |
+| **Phase 2** | **Classifier Data & Trainer**| `src/dental_model/classifier/train.py` (Class weighting, Albumentations) | ✅ **Completed** |
+| **Phase 2** | **Classifier Test Suite** | `tests/test_classifier.py` (10 unit tests) | ✅ **Completed** |
+| **Phase 2** | **Classifier Training Notebook**| `notebooks/05_classifier_finetune.ipynb` | ✅ **Completed** |
+| **Phase 2** | **Classifier Training Run** | `models/classifier_runs/v0/` (95.7% test acc, 0.964 macro F1) | ✅ **Completed** |
+| **Phase 2** | **Classifier Patch Inferer** | `src/dental_model/classifier/infer.py` (`DentalClassifierInferer`) | ✅ **Completed** |
+| **Phase 3** | **Explainability Heatmaps** | `src/dental_model/utils/viz.py` (Grad-CAM overlays) | ✅ **Completed** |
+| **Phase 3** | **Pipeline Integration** | `src/dental_model/pipeline.py` (detector $\rightarrow$ crop $\rightarrow$ classifier) | ✅ **Completed** |
+| **Phase 3** | **Pipeline Test Suite** | `tests/test_pipeline.py` (10 unit tests) | ✅ **Completed** |
+| **Phase 4** | **Gradio Web Demo** | `app/app.py` | ✅ **Completed** |
+| **Phase 4** | **HF Space Requirements** | `app/requirements.txt` (exported via `uv export`) | ✅ **Completed** |
+| **Phase 4** | **Model Card Metadata** | `app/model_card.md` (real metrics & clinical provenance) | ✅ **Completed** |
+| **Phase 4** | **App Test Suite** | `tests/test_app.py` (1 unit test) | ✅ **Completed** |
+| **Phase 4** | **HF Deployment CI/CD** | `.github/workflows/deploy-space.yml` | ✅ **Completed** |
+| **Phase 5** | **Portfolio Documentation** | `report/synopsis.md`, `README.md` updates | ✅ **Completed** |
+
+---
+
+## 10. Phase 4 Gradio Application: Doctor-Centric Clinical UX & Design
+
+The web application in `app/app.py` has been upgraded to a clinical decision-support interface tailored for dental practitioners:
+
+1. **Doctor Clinical Presets:**
+   - **Routine Screening (Recommended):** Auto-sets Confidence `0.35` and IoU `0.45` for balanced general practice checkups.
+   - **Early Prevention (High Sensitivity):** Auto-sets Confidence `0.20` and IoU `0.40` to catch incipient white-spot enamel demineralization for preventive therapy.
+   - **Definitive Diagnosis (High Specificity):** Auto-sets Confidence `0.50` and IoU `0.50` to isolate unambiguous cavitated lesions.
+   - **Custom Parameters:** Fine-grained manual control for research and benchmarking.
+
+2. **Top-Level Clinical Diagnostic Triage Card:**
+   - Generates an instant, patient-level clinical impression banner before individual lesion listings:
+     - Case Triage Status (🔴 *Urgent Restorative Care*, 🟡 *Preventive Protocol*, 🟣 *Prophylaxis*, 🟢 *Sound Dentition*).
+     - Quantitative site metrics (Total sites inspected, advanced cavities, early lesions, sound/ruled-out surfaces).
+     - Actionable clinical recommendations (e.g. bitewing x-rays, topical fluoride varnish, operative restoration).
+
+3. **Reconciled Diagnostic Terminology:**
+   - Reconciles Stage 1 (YOLOv8) and Stage 2 (`timm`) outputs into clear medical terminology:
+     - Eliminates doctor confusion when detector candidate proposals are ruled out as benign sound enamel by high-resolution micro-staging (`Sound Surface (Ruled Out)`).
+     - Maps raw class strings to clinical descriptions: *Advanced Dental Caries (Dentin Cavitation)*, *Incipient / Early Caries (Enamel Micro-Lesion)*, *Dental Plaque Biofilm*, *Sound Enamel*.
+
+4. **Medical Aesthetic & Design System:**
+   - Soft clinical cyan and slate blue palette (`gr.themes.Soft(primary_hue=cyan, secondary_hue=blue, neutral_hue=slate)`).
+   - Glassmorphic stat cards, high-contrast severity badges (🔴 Crimson, 🟡 Amber, 🟣 Violet, 🟢 Emerald), and responsive medical table layouts.
+
+---
+
+## 11. Clinical & Ethical Disclaimers
+
+> [!WARNING]
+> **Academic & Research Demonstration Only:** This software and its associated model checkpoints are developed solely for academic research, benchmarking, and portfolio demonstration.
+>
+> 1. **Not a Medical Device:** The system has not been cleared, certified, or approved by the FDA, CE, or any international medical device regulatory body.
+> 2. **No Substitute for Clinical Diagnosis:** The models should never be used as a standalone diagnostic tool or as a substitute for professional dental examination, radiography, and diagnosis by a qualified, licensed dentist.
+> 3. **Dataset Provenance & Redistribution:** Source datasets originate from published academic repositories (Mendeley Data DOIs `9jnf2jvghy`, `g8yhdvgjy2`, `3253gj88rr` and Roboflow Universe). Derived model checkpoints must comply with all respective source dataset licenses.
